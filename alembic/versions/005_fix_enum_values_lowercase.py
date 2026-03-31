@@ -9,8 +9,8 @@ Revises: 004
 
 from alembic import op
 
-revision = "005"
-down_revision = "004"
+revision = "005_fix_enum_values_lowercase"
+down_revision = "004_cities"
 branch_labels = None
 depends_on = None
 
