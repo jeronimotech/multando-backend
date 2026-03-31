@@ -38,6 +38,11 @@ class ApiKeyCreateRequest(BaseSchema):
         le=365,
         description="Number of days until key expires (None = no expiry)",
     )
+    environment: str = Field(
+        default="production",
+        pattern="^(sandbox|production)$",
+        description="Environment: 'sandbox' (mult_test_) or 'production' (mult_live_)",
+    )
 
 
 class ApiKeyCreateResponse(BaseSchema):

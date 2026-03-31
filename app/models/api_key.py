@@ -23,8 +23,11 @@ class ApiKey(TimestampMixin, Base):
     key_hash: Mapped[str] = mapped_column(
         String(64), unique=True, nullable=False, index=True
     )
-    key_prefix: Mapped[str] = mapped_column(String(13), nullable=False)
+    key_prefix: Mapped[str] = mapped_column(String(15), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+    environment: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="production", index=True
+    )  # "sandbox" or "production"
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),

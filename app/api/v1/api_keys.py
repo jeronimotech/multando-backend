@@ -47,6 +47,7 @@ async def create_api_key(
         api_key, raw_key = await service.create_key(
             user_id=current_user.id,
             name=body.name,
+            environment=body.environment,
             scopes=body.scopes,
             rate_limit=body.rate_limit,
             expires_in_days=body.expires_in_days,

@@ -25,6 +25,7 @@ class ApiKeyService:
         self,
         user_id: UUID,
         name: str,
+        environment: str = "production",
         scopes: list[str] | None = None,
         rate_limit: int = 60,
         expires_in_days: int | None = None,
@@ -34,6 +35,7 @@ class ApiKeyService:
         Args:
             user_id: Owner of the key.
             name: Developer-given name.
+            environment: "sandbox" or "production".
             scopes: Permission scopes.
             rate_limit: Requests per minute.
             expires_in_days: Days until expiry (None = no expiry).
@@ -41,10 +43,16 @@ class ApiKeyService:
         Returns:
             Tuple of (ApiKey record, raw key string shown only once).
         """
-        # Generate the raw key: "mult_" + 40 random hex characters
-        raw_key = "mult_" + secrets.token_hex(20)
+        if environment not in ("sandbox", "production"):
+            raise ValueError("Environment must be 'sandbox' or 'production'")
+
+        # Key prefix indicates environment:
+        #   mult_test_ = sandbox key
+        #   mult_live_ = production key
+        prefix = "mult_test_" if environment == "sandbox" else "mult_live_"
+        raw_key = prefix + secrets.token_hex(20)
         key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
-        key_prefix = raw_key[:8]
+        key_prefix = raw_key[:10]  # "mult_test_" or "mult_live_"
 
         expires_at = None
         if expires_in_days is not None:
@@ -55,6 +63,7 @@ class ApiKeyService:
             key_prefix=key_prefix,
             name=name,
             user_id=user_id,
+            environment=environment,
             is_active=True,
             rate_limit=rate_limit,
             scopes=scopes or [
@@ -75,8 +84,11 @@ class ApiKeyService:
     async def validate_key(self, raw_key: str) -> ApiKey | None:
         """Validate a raw API key and return the record if valid.
 
-        Checks that the key exists, is active, and has not expired.
-        Updates last_used_at on success.
+        Checks that the key exists, is active, has not expired,
+        and matches the current server environment.
+
+        - mult_test_xxx keys only work on sandbox servers (APP_ENV=sandbox)
+        - mult_live_xxx keys only work on production servers (APP_ENV=production)
 
         Args:
             raw_key: The full API key string.
@@ -84,6 +96,8 @@ class ApiKeyService:
         Returns:
             The ApiKey record if valid, None otherwise.
         """
+        from app.core.config import settings
+
         key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
 
         result = await self.db.execute(
@@ -101,6 +115,16 @@ class ApiKeyService:
             now = datetime.now(timezone.utc)
             if now > api_key.expires_at:
                 return None
+
+        # Environment check: sandbox keys only work on sandbox, production on production
+        server_env = settings.APP_ENV  # "sandbox", "production", "development"
+        key_env = api_key.environment   # "sandbox" or "production"
+
+        if server_env == "sandbox" and key_env != "sandbox":
+            return None  # Production key rejected on sandbox server
+        if server_env == "production" and key_env != "production":
+            return None  # Sandbox key rejected on production server
+        # Development mode accepts both (for local testing)
 
         # Update last used timestamp
         api_key.last_used_at = datetime.now(timezone.utc)
