@@ -1,4 +1,7 @@
-"""Claude tool definitions for the Multando chatbot."""
+"""Claude tool definitions for the Multando chatbot.
+
+These tools are used by both the REST API chatbot and the WhatsApp chatbot.
+"""
 
 TOOLS = [
     {
@@ -16,10 +19,10 @@ TOOLS = [
     {
         "name": "create_report",
         "description": (
-            "Crear un nuevo reporte de infraccion de transito. Requiere tipo de infraccion, "
-            "placa del vehiculo, ubicacion y descripcion. "
-            "/ Create a new traffic violation report. Requires infraction type, "
-            "vehicle plate, location, and description."
+            "Crear un nuevo reporte de infraccion de transito. Solo llamar DESPUES de que "
+            "el usuario haya confirmado todos los detalles. "
+            "/ Create a new traffic violation report. Only call AFTER the user "
+            "has confirmed all details."
         ),
         "input_schema": {
             "type": "object",
@@ -116,6 +119,28 @@ TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {},
+            "required": [],
+        },
+    },
+    {
+        "name": "analyze_evidence",
+        "description": (
+            "Analizar una imagen enviada por el usuario para detectar infracciones de transito. "
+            "Extrae placa, tipo de vehiculo, color y detalles de la infraccion. "
+            "/ Analyze a user-uploaded image for traffic violation evidence. "
+            "Extracts plate number, vehicle type, color, and violation details."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "image_description": {
+                    "type": "string",
+                    "description": (
+                        "Descripcion de lo que se observa en la imagen. "
+                        "/ Description of what is observed in the image."
+                    ),
+                },
+            },
             "required": [],
         },
     },

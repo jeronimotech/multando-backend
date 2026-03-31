@@ -24,6 +24,7 @@ from app.api.v1.webhooks import router as webhooks_router
 from app.api.v1.cities import router as cities_router
 from app.api.v1.conversations import router as conversations_router
 from app.api.v1.evidence import router as evidence_router
+from app.api.v1.whatsapp import router as whatsapp_router
 
 router = APIRouter()
 
@@ -58,3 +59,4 @@ router.include_router(admin_router)
 router.include_router(authority_mgmt_router)
 router.include_router(conversations_router)
 router.include_router(webhooks_router)
+router.include_router(whatsapp_router)

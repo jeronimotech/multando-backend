@@ -53,6 +53,13 @@ class Settings(BaseSettings):
     # Service accounts
     CHATBOT_API_KEY: str = ""  # API key for chatbot service-to-service auth
 
+    # WhatsApp Cloud API
+    WHATSAPP_TOKEN: str = ""
+    WHATSAPP_PHONE_NUMBER_ID: str = ""
+    WHATSAPP_VERIFY_TOKEN: str = "multando-verify"
+    WHATSAPP_API_VERSION: str = "v18.0"
+    WHATSAPP_APP_SECRET: str = ""  # For webhook signature verification
+
     # Anthropic (Claude AI chatbot)
     ANTHROPIC_API_KEY: str = ""
     ANTHROPIC_MODEL: str = "claude-sonnet-4-20250514"

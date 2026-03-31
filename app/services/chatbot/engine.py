@@ -243,6 +243,24 @@ async def _execute_tool(
                     ensure_ascii=False,
                 )
 
+        elif tool_name == "analyze_evidence":
+            # The analyze_evidence tool is a hint for the model to use its
+            # vision capabilities on the image already in the conversation.
+            # We return a confirmation so the model can describe findings.
+            description = tool_input.get("image_description", "")
+            return json.dumps(
+                {
+                    "status": "analyzed",
+                    "message": (
+                        "Image analysis complete. Use the description to "
+                        "extract plate, vehicle type, and violation details. "
+                        "Ask the user to confirm or correct."
+                    ),
+                    "description": description,
+                },
+                ensure_ascii=False,
+            )
+
         else:
             return json.dumps(
                 {"error": f"Herramienta desconocida: {tool_name}"},
