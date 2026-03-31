@@ -125,6 +125,9 @@ class VerificationService:
 
         await self.db.flush()
 
+        # Trigger webhooks for verified report
+        await self._trigger_report_webhooks(report, "report.verified")
+
         # Return updated report with relationships
         return await self._get_report(report_id)
 
@@ -196,8 +199,48 @@ class VerificationService:
 
         await self.db.flush()
 
+        # Trigger webhooks for rejected report
+        await self._trigger_report_webhooks(report, "report.rejected")
+
         # Return updated report with relationships
         return await self._get_report(report_id)
+
+    async def _trigger_report_webhooks(
+        self, report: Report, event_type: str
+    ) -> None:
+        """Fire webhook notifications for a report event.
+
+        Uses Celery tasks for async delivery when a city_id is available.
+        Falls back to direct delivery if Celery is unavailable.
+        """
+        if not report.city_id:
+            return
+
+        payload = {
+            "report_id": str(report.id),
+            "short_id": report.short_id,
+            "status": report.status.value,
+            "city_id": report.city_id,
+        }
+
+        try:
+            from app.services.webhook import WebhookService
+
+            webhook_svc = WebhookService(self.db)
+            await webhook_svc.trigger_webhooks(
+                city_id=report.city_id,
+                event_type=event_type,
+                payload=payload,
+            )
+        except Exception:
+            import logging
+
+            logging.getLogger(__name__).warning(
+                "Failed to trigger webhooks for report %s event %s",
+                report.id,
+                event_type,
+                exc_info=True,
+            )
 
     async def _get_report(self, report_id: UUID) -> Report | None:
         """Get a report by ID with all relationships loaded.

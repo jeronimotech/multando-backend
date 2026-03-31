@@ -171,6 +171,51 @@ def send_notification(self, user_id: str, title: str, body: str) -> dict:
     return {"user_id": user_id, "sent": True}
 
 
+@celery_app.task(name="app.tasks.deliver_webhook")
+def deliver_webhook(webhook_id: int, event_type: str, payload: dict) -> dict:
+    """Deliver a webhook notification asynchronously.
+
+    Looks up the webhook by ID, POSTs the payload to its URL with an
+    HMAC-SHA256 signature, and updates the webhook record with the result.
+
+    Args:
+        webhook_id: The AuthorityWebhook ID to deliver to.
+        event_type: The event type string (e.g. "report.verified").
+        payload: The JSON-serialisable event payload.
+
+    Returns:
+        Dict with delivery result (success, status_code, etc.).
+    """
+    logger.info(
+        "Delivering webhook %d for event %s", webhook_id, event_type
+    )
+    return _run_async(_deliver_webhook_async(webhook_id, event_type, payload))
+
+
+async def _deliver_webhook_async(
+    webhook_id: int, event_type: str, payload: dict
+) -> dict:
+    """Async implementation of the webhook delivery task."""
+    from sqlalchemy import select as sa_select
+
+    from app.core.database import async_session_maker
+    from app.models.webhook import AuthorityWebhook
+    from app.services.webhook import WebhookService
+
+    async with async_session_maker() as session:
+        result = await session.execute(
+            sa_select(AuthorityWebhook).where(AuthorityWebhook.id == webhook_id)
+        )
+        webhook = result.scalar_one_or_none()
+        if not webhook:
+            logger.warning("Webhook %d not found; skipping delivery", webhook_id)
+            return {"webhook_id": webhook_id, "success": False, "error": "not_found"}
+
+        svc = WebhookService(session)
+        outcome = await svc._deliver(webhook, event_type, payload)
+        return outcome
+
+
 @celery_app.task(bind=True, name="app.tasks.process_evidence")
 def process_evidence(self, report_id: str, evidence_url: str) -> dict:
     """Process uploaded evidence (thumbnail generation, IPFS upload).

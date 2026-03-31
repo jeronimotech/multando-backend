@@ -122,6 +122,31 @@ class ReportService:
         self.db.add(activity)
         await self.db.flush()
 
+        # Trigger webhooks for report creation
+        if report.city_id:
+            try:
+                from app.services.webhook import WebhookService
+
+                webhook_svc = WebhookService(self.db)
+                await webhook_svc.trigger_webhooks(
+                    city_id=report.city_id,
+                    event_type="report.created",
+                    payload={
+                        "report_id": str(report.id),
+                        "short_id": short_id,
+                        "status": "pending",
+                        "city_id": report.city_id,
+                    },
+                )
+            except Exception:
+                import logging
+
+                logging.getLogger(__name__).warning(
+                    "Failed to trigger webhooks for new report %s",
+                    report.id,
+                    exc_info=True,
+                )
+
         # Refresh and return with relationships
         await self.db.refresh(report)
         return await self.get_by_id(report.id)

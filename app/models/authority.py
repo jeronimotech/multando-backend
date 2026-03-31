@@ -14,6 +14,7 @@ from app.models.enums import AuthorityRole, SubscriptionTier
 if TYPE_CHECKING:
     from app.models.city import City
     from app.models.user import User
+    from app.models.webhook import AuthorityWebhook
 
 
 class Authority(Base):
@@ -60,6 +61,9 @@ class Authority(Base):
     )
     users: Mapped[list["AuthorityUser"]] = relationship(
         "AuthorityUser", back_populates="authority", cascade="all, delete-orphan"
+    )
+    webhooks: Mapped[list["AuthorityWebhook"]] = relationship(
+        "AuthorityWebhook", back_populates="authority", cascade="all, delete-orphan"
     )
 
     def __repr__(self) -> str:

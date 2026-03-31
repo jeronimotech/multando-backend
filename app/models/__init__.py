@@ -44,6 +44,9 @@ from app.models.city import City
 # Authority models
 from app.models.authority import Authority, AuthorityUser
 
+# Webhook models
+from app.models.webhook import AuthorityWebhook
+
 # Wallet models
 from app.models.wallet import CustodialWallet, HotWalletLedger, WithdrawalRequest
 
@@ -96,6 +99,8 @@ __all__ = [
     # Authority models
     "Authority",
     "AuthorityUser",
+    # Webhook models
+    "AuthorityWebhook",
     # Wallet models
     "CustodialWallet",
     "WithdrawalRequest",
