@@ -44,6 +44,12 @@ class Settings(BaseSettings):
     S3_BUCKET: str = "multando-evidence"
     STORAGE_BASE_URL: str = "https://storage.multando.com"
 
+    # OAuth Providers
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
+    GITHUB_CLIENT_ID: str = ""
+    GITHUB_CLIENT_SECRET: str = ""
+
     # Service accounts
     CHATBOT_API_KEY: str = ""  # API key for chatbot service-to-service auth
 
