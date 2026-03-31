@@ -1,0 +1,8 @@
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+startCommand = "celery -A app.core.celery beat --loglevel=info -s /tmp/celerybeat-schedule"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5
