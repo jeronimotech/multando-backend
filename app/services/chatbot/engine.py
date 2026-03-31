@@ -1,0 +1,444 @@
+"""Core AI chatbot engine powered by Anthropic Claude.
+
+This module orchestrates conversations with Claude, including tool calling
+and image analysis, using existing Multando services for data operations.
+"""
+
+import json
+import logging
+from datetime import datetime, timezone
+from uuid import UUID
+
+import anthropic
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from app.core.config import settings
+from app.models import (
+    Conversation,
+    ConversationStatus,
+    Infraction,
+    Message,
+    MessageDirection,
+    MessageType,
+    Report,
+    ReportStatus,
+)
+from app.schemas.report import (
+    LocationSchema,
+    ReportCreate,
+    ReportSource,
+    VehicleCategory,
+)
+from app.services.chatbot.system_prompt import SYSTEM_PROMPT
+from app.services.chatbot.tools import TOOLS
+from app.services.infraction import InfractionService
+from app.services.report import ReportService
+from app.services.wallet import WalletService
+
+logger = logging.getLogger(__name__)
+
+MODEL = settings.ANTHROPIC_MODEL
+MAX_TOOL_ROUNDS = 5  # Prevent infinite tool-call loops
+
+
+def _get_client() -> anthropic.Anthropic:
+    """Create an Anthropic client using the configured API key."""
+    if not settings.ANTHROPIC_API_KEY:
+        raise ValueError(
+            "ANTHROPIC_API_KEY is not configured. "
+            "Set it in .env or environment variables."
+        )
+    return anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+
+
+async def _load_conversation_history(
+    conversation_id: int,
+    db: AsyncSession,
+) -> list[dict]:
+    """Load conversation messages and convert to Claude message format.
+
+    Args:
+        conversation_id: ID of the conversation.
+        db: Async database session.
+
+    Returns:
+        A list of message dicts in Claude API format.
+    """
+    result = await db.execute(
+        select(Message)
+        .where(Message.conversation_id == conversation_id)
+        .order_by(Message.created_at)
+    )
+    messages = list(result.scalars().all())
+
+    claude_messages: list[dict] = []
+    for msg in messages:
+        role = "user" if msg.direction == MessageDirection.INBOUND else "assistant"
+        content = msg.content or ""
+
+        # Check if message has image metadata
+        if msg.message_metadata and msg.message_metadata.get("image_base64"):
+            media_type = msg.message_metadata.get("image_media_type", "image/jpeg")
+            claude_messages.append({
+                "role": role,
+                "content": [
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": media_type,
+                            "data": msg.message_metadata["image_base64"],
+                        },
+                    },
+                    {"type": "text", "text": content},
+                ],
+            })
+        else:
+            claude_messages.append({"role": role, "content": content})
+
+    return claude_messages
+
+
+async def _execute_tool(
+    tool_name: str,
+    tool_input: dict,
+    user_id: UUID,
+    db: AsyncSession,
+) -> str:
+    """Execute a tool call and return the result as a JSON string.
+
+    Args:
+        tool_name: Name of the tool to execute.
+        tool_input: Input parameters for the tool.
+        user_id: UUID of the current user.
+        db: Async database session.
+
+    Returns:
+        JSON string with the tool result.
+    """
+    try:
+        if tool_name == "get_infractions":
+            svc = InfractionService(db)
+            infractions = await svc.list_all()
+            return json.dumps(
+                [
+                    {
+                        "id": i.id,
+                        "code": i.code,
+                        "name_es": i.name_es,
+                        "name_en": i.name_en,
+                        "category": i.category.value,
+                        "severity": i.severity.value,
+                        "points_reward": i.points_reward,
+                        "multa_reward": float(i.multa_reward),
+                    }
+                    for i in infractions
+                ],
+                ensure_ascii=False,
+            )
+
+        elif tool_name == "create_report":
+            svc = ReportService(db)
+            report_data = ReportCreate(
+                infraction_id=tool_input["infraction_id"],
+                vehicle_plate=tool_input.get("plate_number"),
+                vehicle_type_id=tool_input.get("vehicle_type_id"),
+                vehicle_category=VehicleCategory.PRIVATE,
+                source=ReportSource.WHATSAPP,
+                location=LocationSchema(
+                    lat=tool_input["latitude"],
+                    lon=tool_input["longitude"],
+                ),
+                incident_datetime=datetime.now(timezone.utc),
+            )
+            report = await svc.create(user_id, report_data)
+            await db.commit()
+            return json.dumps(
+                {
+                    "success": True,
+                    "report_id": str(report.id),
+                    "short_id": report.short_id,
+                    "status": report.status.value,
+                    "message": f"Reporte {report.short_id} creado exitosamente.",
+                },
+                ensure_ascii=False,
+            )
+
+        elif tool_name == "list_my_reports":
+            svc = ReportService(db)
+            page = tool_input.get("page", 1)
+            reports, total = await svc.list_reports(
+                page=page,
+                page_size=10,
+                reporter_id=user_id,
+            )
+            return json.dumps(
+                {
+                    "total": total,
+                    "page": page,
+                    "reports": [
+                        {
+                            "short_id": r.short_id,
+                            "status": r.status.value,
+                            "vehicle_plate": r.vehicle_plate,
+                            "created_at": r.created_at.isoformat() if r.created_at else None,
+                            "infraction": r.infraction.name_es if r.infraction else None,
+                        }
+                        for r in reports
+                    ],
+                },
+                ensure_ascii=False,
+            )
+
+        elif tool_name == "get_report_status":
+            svc = ReportService(db)
+            report_id_str = tool_input["report_id"]
+            # Try UUID first, then short_id
+            report = None
+            try:
+                uuid_id = UUID(report_id_str)
+                report = await svc.get_by_id(uuid_id)
+            except ValueError:
+                report = await svc.get_by_short_id(report_id_str)
+
+            if not report:
+                return json.dumps(
+                    {"error": "Reporte no encontrado. / Report not found."},
+                    ensure_ascii=False,
+                )
+
+            return json.dumps(
+                {
+                    "short_id": report.short_id,
+                    "status": report.status.value,
+                    "vehicle_plate": report.vehicle_plate,
+                    "created_at": report.created_at.isoformat() if report.created_at else None,
+                    "infraction": report.infraction.name_es if report.infraction else None,
+                    "verified_at": report.verified_at.isoformat() if report.verified_at else None,
+                    "on_chain": report.on_chain,
+                },
+                ensure_ascii=False,
+            )
+
+        elif tool_name == "get_wallet_balance":
+            svc = WalletService(db)
+            try:
+                wallet_info = await svc.get_wallet_info(user_id)
+                return json.dumps(
+                    {
+                        "balance": float(wallet_info.balance),
+                        "staked_balance": float(wallet_info.staked_balance),
+                        "pending_rewards": float(wallet_info.pending_rewards),
+                        "total_earned": float(wallet_info.total_earned),
+                        "wallet_type": wallet_info.wallet_type,
+                        "wallet_status": wallet_info.wallet_status,
+                    },
+                    ensure_ascii=False,
+                )
+            except ValueError:
+                return json.dumps(
+                    {"balance": 0, "message": "No se encontro billetera para este usuario."},
+                    ensure_ascii=False,
+                )
+
+        else:
+            return json.dumps(
+                {"error": f"Herramienta desconocida: {tool_name}"},
+                ensure_ascii=False,
+            )
+
+    except Exception as exc:
+        logger.exception("Error executing tool %s", tool_name)
+        return json.dumps(
+            {"error": f"Error al ejecutar {tool_name}: {str(exc)}"},
+            ensure_ascii=False,
+        )
+
+
+async def process_message(
+    user_id: UUID,
+    conversation_id: int,
+    message: str,
+    image_base64: str | None = None,
+    image_media_type: str = "image/jpeg",
+    db: AsyncSession | None = None,
+) -> dict:
+    """Process a user message through the Claude AI engine.
+
+    1. Load conversation history from DB.
+    2. Build Claude messages array (with optional image).
+    3. Call Claude with tools.
+    4. If Claude calls a tool, execute it and feed result back.
+    5. Loop until Claude gives a final text response.
+    6. Save assistant message to DB.
+    7. Return response dict.
+
+    Args:
+        user_id: UUID of the authenticated user.
+        conversation_id: ID of the conversation.
+        message: The user's text message.
+        image_base64: Optional base64-encoded image for analysis.
+        image_media_type: MIME type of the image.
+        db: Async database session.
+
+    Returns:
+        A dict with the assistant message and tool_calls used.
+    """
+    if db is None:
+        raise ValueError("Database session is required")
+
+    client = _get_client()
+
+    # Load existing conversation history
+    claude_messages = await _load_conversation_history(conversation_id, db)
+
+    # Build the new user message
+    if image_base64:
+        user_content = [
+            {
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": image_media_type,
+                    "data": image_base64,
+                },
+            },
+            {"type": "text", "text": message},
+        ]
+    else:
+        user_content = message
+
+    claude_messages.append({"role": "user", "content": user_content})
+
+    # Tool call loop
+    tool_calls_log: list[dict] = []
+
+    for _round in range(MAX_TOOL_ROUNDS):
+        try:
+            response = client.messages.create(
+                model=MODEL,
+                max_tokens=2048,
+                system=SYSTEM_PROMPT,
+                tools=TOOLS,
+                messages=claude_messages,
+            )
+        except anthropic.APIError as exc:
+            logger.exception("Anthropic API error")
+            # Save a friendly error as the assistant response
+            error_text = (
+                "Lo siento, estoy teniendo problemas tecnicos en este momento. "
+                "Por favor intenta de nuevo en unos minutos. "
+                "/ Sorry, I'm having technical issues right now. Please try again shortly."
+            )
+            assistant_msg = await _save_assistant_message(
+                conversation_id, error_text, db
+            )
+            return {
+                "message": _message_to_dict(assistant_msg),
+                "tool_calls": [],
+            }
+
+        # Check if Claude wants to use tools
+        if response.stop_reason == "tool_use":
+            # Add the full assistant response to history
+            claude_messages.append({
+                "role": "assistant",
+                "content": response.content,
+            })
+
+            # Process each tool use block
+            tool_results = []
+            for block in response.content:
+                if block.type == "tool_use":
+                    tool_calls_log.append({
+                        "tool": block.name,
+                        "input": block.input,
+                    })
+                    result_str = await _execute_tool(
+                        block.name, block.input, user_id, db
+                    )
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": result_str,
+                    })
+
+            # Feed tool results back to Claude
+            claude_messages.append({"role": "user", "content": tool_results})
+
+        else:
+            # Final text response — extract text
+            assistant_text = ""
+            for block in response.content:
+                if hasattr(block, "text"):
+                    assistant_text += block.text
+
+            # Save the assistant message to DB
+            assistant_msg = await _save_assistant_message(
+                conversation_id, assistant_text, db
+            )
+
+            return {
+                "message": _message_to_dict(assistant_msg),
+                "tool_calls": tool_calls_log,
+            }
+
+    # If we exhausted tool rounds, return whatever we have
+    fallback_text = (
+        "He procesado tu solicitud. Si necesitas algo mas, no dudes en preguntar."
+    )
+    assistant_msg = await _save_assistant_message(
+        conversation_id, fallback_text, db
+    )
+    return {
+        "message": _message_to_dict(assistant_msg),
+        "tool_calls": tool_calls_log,
+    }
+
+
+async def _save_assistant_message(
+    conversation_id: int,
+    content: str,
+    db: AsyncSession,
+) -> Message:
+    """Save an assistant (outbound) message to the database.
+
+    Args:
+        conversation_id: ID of the conversation.
+        content: The assistant's text content.
+        db: Async database session.
+
+    Returns:
+        The created Message object.
+    """
+    msg = Message(
+        conversation_id=conversation_id,
+        direction=MessageDirection.OUTBOUND,
+        content=content,
+        message_type=MessageType.TEXT,
+    )
+    db.add(msg)
+    await db.flush()
+    await db.refresh(msg)
+    return msg
+
+
+def _message_to_dict(msg: Message) -> dict:
+    """Convert a Message model to a serializable dict.
+
+    Args:
+        msg: The Message model instance.
+
+    Returns:
+        A dict matching the MessageResponse schema.
+    """
+    return {
+        "id": msg.id,
+        "conversation_id": msg.conversation_id,
+        "direction": msg.direction.value,
+        "content": msg.content,
+        "message_type": msg.message_type.value,
+        "created_at": msg.created_at.isoformat() if msg.created_at else None,
+    }

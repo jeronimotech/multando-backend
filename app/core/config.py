@@ -53,6 +53,10 @@ class Settings(BaseSettings):
     # Service accounts
     CHATBOT_API_KEY: str = ""  # API key for chatbot service-to-service auth
 
+    # Anthropic (Claude AI chatbot)
+    ANTHROPIC_API_KEY: str = ""
+    ANTHROPIC_MODEL: str = "claude-sonnet-4-20250514"
+
     # Rate limiting
     RATE_LIMIT_PER_MINUTE: int = 60
 
