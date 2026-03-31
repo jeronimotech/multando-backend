@@ -216,6 +216,29 @@ async def _deliver_webhook_async(
         return outcome
 
 
+@celery_app.task(name="app.tasks.seed_catalogues")
+def seed_catalogues() -> dict:
+    """Seed catalogue tables (idempotent).
+
+    Populates infractions, vehicle types, levels, and badges.
+    Safe to run multiple times -- uses INSERT ... ON CONFLICT DO UPDATE.
+
+    Returns:
+        Dict with row counts per table.
+    """
+    logger.info("Running catalogue seed task")
+    return _run_async(_seed_catalogues_async())
+
+
+async def _seed_catalogues_async() -> dict:
+    """Async implementation of the catalogue seed task."""
+    from app.scripts.seed_catalogues import seed_catalogues as _do_seed
+
+    results = await _do_seed()
+    # Convert to plain dict for JSON serialisation
+    return {k: v for k, v in results.items()}
+
+
 @celery_app.task(bind=True, name="app.tasks.process_evidence")
 def process_evidence(self, report_id: str, evidence_url: str) -> dict:
     """Process uploaded evidence (thumbnail generation, IPFS upload).
