@@ -737,7 +737,7 @@ async def _upsert_badges(session: AsyncSession) -> int:
     for data in BADGES_DATA:
         row = {
             **data,
-            "rarity": data["rarity"].value,
+            "rarity": data["rarity"].name,
         }
         stmt = (
             pg_insert(Badge)

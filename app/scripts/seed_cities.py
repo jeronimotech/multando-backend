@@ -9,7 +9,7 @@ import asyncio
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import async_session_factory
+from app.core.database import async_session_maker
 from app.models.city import City
 
 # Major Colombian cities with center coordinates and departments
@@ -134,7 +134,7 @@ async def seed_cities(db: AsyncSession) -> list[City]:
 
 async def main() -> None:
     """Entry point for the seed script."""
-    async with async_session_factory() as db:
+    async with async_session_maker() as db:
         cities = await seed_cities(db)
         if cities:
             print(f"Seeded {len(cities)} cities:")
