@@ -224,14 +224,15 @@ class VerificationService:
         }
 
         try:
-            from app.services.webhook import WebhookService
+            async with self.db.begin_nested():
+                from app.services.webhook import WebhookService
 
-            webhook_svc = WebhookService(self.db)
-            await webhook_svc.trigger_webhooks(
-                city_id=report.city_id,
-                event_type=event_type,
-                payload=payload,
-            )
+                webhook_svc = WebhookService(self.db)
+                await webhook_svc.trigger_webhooks(
+                    city_id=report.city_id,
+                    event_type=event_type,
+                    payload=payload,
+                )
         except Exception:
             import logging
 

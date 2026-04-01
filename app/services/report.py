@@ -122,22 +122,24 @@ class ReportService:
         self.db.add(activity)
         await self.db.flush()
 
-        # Trigger webhooks for report creation
+        # Trigger webhooks for report creation (in a savepoint so failures
+        # don't abort the main transaction)
         if report.city_id:
             try:
-                from app.services.webhook import WebhookService
+                async with self.db.begin_nested():
+                    from app.services.webhook import WebhookService
 
-                webhook_svc = WebhookService(self.db)
-                await webhook_svc.trigger_webhooks(
-                    city_id=report.city_id,
-                    event_type="report.created",
-                    payload={
-                        "report_id": str(report.id),
-                        "short_id": short_id,
-                        "status": "pending",
-                        "city_id": report.city_id,
-                    },
-                )
+                    webhook_svc = WebhookService(self.db)
+                    await webhook_svc.trigger_webhooks(
+                        city_id=report.city_id,
+                        event_type="report.created",
+                        payload={
+                            "report_id": str(report.id),
+                            "short_id": short_id,
+                            "status": "pending",
+                            "city_id": report.city_id,
+                        },
+                    )
             except Exception:
                 import logging
 
