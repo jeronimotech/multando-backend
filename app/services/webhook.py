@@ -171,6 +171,18 @@ class WebhookService:
         Returns:
             List of result dicts with webhook_id, success, and status_code.
         """
+        # Check if the authority_webhooks table exists before querying
+        try:
+            from sqlalchemy import text
+
+            check = await self.db.execute(
+                text("SELECT 1 FROM information_schema.tables WHERE table_name = 'authority_webhooks'")
+            )
+            if not check.scalar():
+                return []
+        except Exception:
+            return []
+
         # Find all active webhooks for authorities whose city matches
         q = (
             select(AuthorityWebhook)
