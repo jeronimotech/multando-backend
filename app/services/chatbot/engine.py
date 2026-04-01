@@ -253,7 +253,7 @@ async def _execute_tool(
                     "status": "analyzed",
                     "message": (
                         "Image analysis complete. Use the description to "
-                        "extract plate, vehicle type, and violation details. "
+                        "extract plate, vehicle type, and infraction details. "
                         "Ask the user to confirm or correct."
                     ),
                     "description": description,

@@ -21,7 +21,7 @@ TOOLS = [
         "description": (
             "Crear un nuevo reporte de infraccion de transito. Solo llamar DESPUES de que "
             "el usuario haya confirmado todos los detalles. "
-            "/ Create a new traffic violation report. Only call AFTER the user "
+            "/ Create a new traffic infraction report. Only call AFTER the user "
             "has confirmed all details."
         ),
         "input_schema": {
@@ -77,7 +77,7 @@ TOOLS = [
         "name": "list_my_reports",
         "description": (
             "Listar los reportes de infracciones del usuario actual. "
-            "/ List the current user's traffic violation reports."
+            "/ List the current user's traffic infraction reports."
         ),
         "input_schema": {
             "type": "object",
@@ -127,8 +127,8 @@ TOOLS = [
         "description": (
             "Analizar una imagen enviada por el usuario para detectar infracciones de transito. "
             "Extrae placa, tipo de vehiculo, color y detalles de la infraccion. "
-            "/ Analyze a user-uploaded image for traffic violation evidence. "
-            "Extracts plate number, vehicle type, color, and violation details."
+            "/ Analyze a user-uploaded image for traffic infraction evidence. "
+            "Extracts plate number, vehicle type, color, and infraction details."
         ),
         "input_schema": {
             "type": "object",

@@ -218,7 +218,7 @@ async def _extract_message_content(
             )
 
         text = caption or (
-            "User sent an image. Please analyze it for traffic violations."
+            "User sent an image. Please analyze it for traffic infractions."
         )
         return text, image_base64, image_media_type
 

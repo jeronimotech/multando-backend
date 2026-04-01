@@ -31,7 +31,7 @@ class RejectReportRequest(BaseModel):
     "/{report_id}/verify",
     response_model=ReportDetail,
     summary="Verify a report",
-    description="Verify a pending traffic violation report. Awards points to both verifier and reporter.",
+    description="Verify a pending traffic infraction report. Awards points to both verifier and reporter.",
 )
 async def verify_report(
     report_id: UUID,
@@ -91,7 +91,7 @@ async def verify_report(
     "/{report_id}/reject",
     response_model=ReportDetail,
     summary="Reject a report",
-    description="Reject a pending traffic violation report with a reason.",
+    description="Reject a pending traffic infraction report with a reason.",
 )
 async def reject_report(
     report_id: UUID,

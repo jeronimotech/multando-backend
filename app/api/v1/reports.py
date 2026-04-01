@@ -149,7 +149,7 @@ def _build_report_detail(report) -> ReportDetail:
     response_model=ReportDetail,
     status_code=status.HTTP_201_CREATED,
     summary="Create a new report",
-    description="Submit a new traffic violation report. Requires authentication.",
+    description="Submit a new traffic infraction report. Requires authentication.",
 )
 async def create_report(
     data: ReportCreate,

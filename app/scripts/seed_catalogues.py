@@ -280,9 +280,9 @@ INFRACTIONS_DATA: list[dict[str, Any]] = [
     },
     {
         "code": "OTH001",
-        "name_en": "Other Violation",
+        "name_en": "Other Infraction",
         "name_es": "Otra infraccion",
-        "description_en": "Other traffic violation not listed in specific categories.",
+        "description_en": "Other traffic infraction not listed in specific categories.",
         "description_es": "Otra infraccion de transito no listada en categorias especificas.",
         "category": InfractionCategory.BEHAVIOR,
         "severity": InfractionSeverity.LOW,
