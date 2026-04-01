@@ -237,6 +237,46 @@ async def list_reports(
 
 
 @router.get(
+    "/markers",
+    summary="Get report markers for map display (public)",
+    description="Returns recent reports with coordinates for map display. No auth required.",
+)
+async def get_report_markers(
+    db: DbSession,
+    status: SchemaReportStatus | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=500),
+):
+    """Public endpoint for map markers. Returns minimal data for map pins."""
+    from sqlalchemy import select
+    from app.models import Report, Infraction
+
+    q = select(Report).join(Infraction, Report.infraction_id == Infraction.id)
+    if status:
+        q = q.where(Report.status == status.value)
+    q = q.order_by(Report.created_at.desc()).limit(limit)
+
+    result = await db.execute(q)
+    reports = result.scalars().all()
+
+    markers = []
+    for r in reports:
+        if r.latitude is None or r.longitude is None:
+            continue
+        infraction = await db.get(Infraction, r.infraction_id)
+        markers.append({
+            "id": str(r.id),
+            "shortId": r.short_id or "",
+            "latitude": r.latitude,
+            "longitude": r.longitude,
+            "infraction": infraction.name_en if infraction else "",
+            "vehiclePlate": r.vehicle_plate or "",
+            "status": r.status.value if hasattr(r.status, 'value') else r.status,
+            "createdAt": r.created_at.isoformat() if r.created_at else "",
+        })
+    return markers
+
+
+@router.get(
     "/pending-verification",
     response_model=ReportList,
     summary="Get reports pending verification",
