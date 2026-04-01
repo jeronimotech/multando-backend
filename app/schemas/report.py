@@ -87,7 +87,12 @@ class ReportCreate(ReportBase):
     @classmethod
     def validate_incident_datetime(cls, v: datetime) -> datetime:
         """Validate incident datetime is not in the future."""
-        if v > datetime.now():
+        from datetime import timezone
+        now = datetime.now(timezone.utc)
+        # Make naive datetimes UTC-aware for comparison
+        if v.tzinfo is None:
+            v = v.replace(tzinfo=timezone.utc)
+        if v > now:
             raise ValueError("Incident datetime cannot be in the future")
         return v
 
