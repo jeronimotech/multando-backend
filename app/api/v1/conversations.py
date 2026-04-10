@@ -223,6 +223,21 @@ async def send_message(
             "image_base64": body.image_base64,
             "image_media_type": body.image_media_type,
         }
+        # Attach SDK evidence metadata when present
+        if body.image_hash:
+            metadata["image_hash"] = body.image_hash
+        if body.image_signature:
+            metadata["image_signature"] = body.image_signature
+        if body.image_timestamp:
+            metadata["image_timestamp"] = body.image_timestamp
+        if body.image_latitude is not None:
+            metadata["image_latitude"] = body.image_latitude
+        if body.image_longitude is not None:
+            metadata["image_longitude"] = body.image_longitude
+        if body.device_id:
+            metadata["device_id"] = body.device_id
+        if body.capture_method:
+            metadata["capture_method"] = body.capture_method
         msg_type = MessageType.IMAGE
 
     user_msg = Message(
@@ -245,6 +260,15 @@ async def send_message(
             message=body.content,
             image_base64=body.image_base64,
             image_media_type=body.image_media_type,
+            evidence_metadata={
+                "image_hash": body.image_hash,
+                "image_signature": body.image_signature,
+                "image_timestamp": body.image_timestamp,
+                "image_latitude": body.image_latitude,
+                "image_longitude": body.image_longitude,
+                "device_id": body.device_id,
+                "capture_method": body.capture_method,
+            } if body.image_base64 else None,
             db=db,
         )
     except ValueError as exc:

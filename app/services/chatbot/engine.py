@@ -4,6 +4,7 @@ This module orchestrates conversations with Claude, including tool calling
 and image analysis, using existing Multando services for data operations.
 """
 
+import base64
 import json
 import logging
 from datetime import datetime, timezone
@@ -18,6 +19,8 @@ from app.core.config import settings
 from app.models import (
     Conversation,
     ConversationStatus,
+    Evidence,
+    EvidenceType,
     Infraction,
     Message,
     MessageDirection,
@@ -33,6 +36,7 @@ from app.schemas.report import (
 )
 from app.services.chatbot.system_prompt import SYSTEM_PROMPT
 from app.services.chatbot.tools import TOOLS
+from app.services.evidence_processor import EvidenceProcessor
 from app.services.infraction import InfractionService
 from app.services.report import ReportService
 from app.services.wallet import WalletService
@@ -106,6 +110,7 @@ async def _execute_tool(
     tool_input: dict,
     user_id: UUID,
     db: AsyncSession,
+    image_context: dict | None = None,
 ) -> str:
     """Execute a tool call and return the result as a JSON string.
 
@@ -114,6 +119,8 @@ async def _execute_tool(
         tool_input: Input parameters for the tool.
         user_id: UUID of the current user.
         db: Async database session.
+        image_context: Optional dict with image bytes and evidence metadata
+                       from the current conversation for evidence processing.
 
     Returns:
         JSON string with the tool result.
@@ -154,17 +161,70 @@ async def _execute_tool(
                 incident_datetime=datetime.now(timezone.utc),
             )
             report = await svc.create(user_id, report_data)
+
+            # Process evidence image if available in conversation context
+            evidence_info: dict | None = None
+            if image_context and image_context.get("image_bytes"):
+                try:
+                    processor = EvidenceProcessor(db)
+                    ev_meta = image_context.get("evidence_metadata") or {}
+                    result = await processor.verify_and_process(
+                        image_bytes=image_context["image_bytes"],
+                        timestamp=ev_meta.get("image_timestamp"),
+                        latitude=ev_meta.get("image_latitude"),
+                        longitude=ev_meta.get("image_longitude"),
+                        signature=ev_meta.get("image_signature"),
+                        device_id=ev_meta.get("device_id"),
+                        image_hash=ev_meta.get("image_hash"),
+                    )
+
+                    # Store watermarked image as base64 data-URI evidence
+                    watermarked_b64 = base64.b64encode(result.processed_image).decode()
+                    evidence_url = f"data:image/jpeg;base64,{watermarked_b64}"
+
+                    evidence = Evidence(
+                        report_id=report.id,
+                        type=EvidenceType.IMAGE,
+                        url=evidence_url,
+                        mime_type="image/jpeg",
+                        file_size=len(result.processed_image),
+                        capture_verified=result.verified,
+                        image_hash=result.image_hash,
+                        capture_signature=ev_meta.get("image_signature"),
+                        capture_metadata={
+                            "device_id": ev_meta.get("device_id"),
+                            "capture_method": ev_meta.get("capture_method"),
+                            "verification_reasons": result.reasons,
+                        },
+                    )
+                    db.add(evidence)
+                    await db.flush()
+
+                    evidence_info = {
+                        "verified": result.verified,
+                        "image_hash": result.image_hash,
+                        "reasons": result.reasons,
+                    }
+                except Exception:
+                    logger.exception("Evidence processing failed for report %s", report.id)
+                    evidence_info = {
+                        "verified": False,
+                        "error": "Evidence processing failed",
+                    }
+
             await db.commit()
-            return json.dumps(
-                {
-                    "success": True,
-                    "report_id": str(report.id),
-                    "short_id": report.short_id,
-                    "status": report.status.value,
-                    "message": f"Reporte {report.short_id} creado exitosamente.",
-                },
-                ensure_ascii=False,
-            )
+
+            response_data = {
+                "success": True,
+                "report_id": str(report.id),
+                "short_id": report.short_id,
+                "status": report.status.value,
+                "message": f"Reporte {report.short_id} creado exitosamente.",
+            }
+            if evidence_info:
+                response_data["evidence"] = evidence_info
+
+            return json.dumps(response_data, ensure_ascii=False)
 
         elif tool_name == "list_my_reports":
             svc = ReportService(db)
@@ -281,6 +341,7 @@ async def process_message(
     message: str,
     image_base64: str | None = None,
     image_media_type: str = "image/jpeg",
+    evidence_metadata: dict | None = None,
     db: AsyncSession | None = None,
 ) -> dict:
     """Process a user message through the Claude AI engine.
@@ -299,6 +360,7 @@ async def process_message(
         message: The user's text message.
         image_base64: Optional base64-encoded image for analysis.
         image_media_type: MIME type of the image.
+        evidence_metadata: Optional SDK evidence metadata (hash, signature, etc.).
         db: Async database session.
 
     Returns:
@@ -311,6 +373,25 @@ async def process_message(
 
     # Load existing conversation history
     claude_messages = await _load_conversation_history(conversation_id, db)
+
+    # Build image context for evidence processing during tool calls.
+    # Use the current image if provided, otherwise look for the most recent
+    # image in the conversation history stored in message metadata.
+    image_context: dict | None = None
+    if image_base64:
+        try:
+            image_bytes = base64.b64decode(image_base64)
+        except Exception:
+            image_bytes = None
+        if image_bytes:
+            image_context = {
+                "image_bytes": image_bytes,
+                "image_base64": image_base64,
+                "evidence_metadata": evidence_metadata,
+            }
+    else:
+        # Check conversation history for the most recent image with metadata
+        image_context = await _find_latest_image_context(conversation_id, db)
 
     # Build the new user message
     if image_base64:
@@ -375,7 +456,8 @@ async def process_message(
                         "input": block.input,
                     })
                     result_str = await _execute_tool(
-                        block.name, block.input, user_id, db
+                        block.name, block.input, user_id, db,
+                        image_context=image_context,
                     )
                     tool_results.append({
                         "type": "tool_result",
@@ -413,6 +495,62 @@ async def process_message(
     return {
         "message": _message_to_dict(assistant_msg),
         "tool_calls": tool_calls_log,
+    }
+
+
+async def _find_latest_image_context(
+    conversation_id: int,
+    db: AsyncSession,
+) -> dict | None:
+    """Scan conversation messages for the most recent image with metadata.
+
+    When ``create_report`` is called in a later turn than the one where the
+    image was sent, we need to recover the image bytes and evidence metadata
+    from the stored message.
+
+    Args:
+        conversation_id: ID of the conversation.
+        db: Async database session.
+
+    Returns:
+        A dict with ``image_bytes``, ``image_base64``, and ``evidence_metadata``
+        if found, otherwise None.
+    """
+    result = await db.execute(
+        select(Message)
+        .where(
+            Message.conversation_id == conversation_id,
+            Message.message_type == MessageType.IMAGE,
+        )
+        .order_by(Message.created_at.desc())
+        .limit(1)
+    )
+    msg = result.scalar_one_or_none()
+    if not msg or not msg.message_metadata:
+        return None
+
+    meta = msg.message_metadata
+    img_b64 = meta.get("image_base64")
+    if not img_b64:
+        return None
+
+    try:
+        image_bytes = base64.b64decode(img_b64)
+    except Exception:
+        return None
+
+    return {
+        "image_bytes": image_bytes,
+        "image_base64": img_b64,
+        "evidence_metadata": {
+            "image_hash": meta.get("image_hash"),
+            "image_signature": meta.get("image_signature"),
+            "image_timestamp": meta.get("image_timestamp"),
+            "image_latitude": meta.get("image_latitude"),
+            "image_longitude": meta.get("image_longitude"),
+            "device_id": meta.get("device_id"),
+            "capture_method": meta.get("capture_method"),
+        },
     }
 
 

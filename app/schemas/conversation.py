@@ -17,6 +17,14 @@ class MessageSend(BaseSchema):
     content: str
     image_base64: str | None = None  # Optional base64 image for analysis
     image_media_type: str = "image/jpeg"
+    # Evidence metadata from SDK signing
+    image_hash: str | None = None
+    image_signature: str | None = None
+    image_timestamp: str | None = None
+    image_latitude: float | None = None
+    image_longitude: float | None = None
+    device_id: str | None = None
+    capture_method: str | None = None  # 'camera' or 'gallery'
 
 
 class MessageResponse(BaseSchema):
