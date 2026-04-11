@@ -1,5 +1,7 @@
 """Report service for managing traffic violation reports."""
 
+import base64
+import logging
 import secrets
 import string
 from decimal import Decimal
@@ -13,6 +15,7 @@ from app.models import (
     Activity,
     ActivityType,
     Evidence,
+    EvidenceType,
     Infraction,
     Report,
     ReportStatus,
@@ -21,6 +24,9 @@ from app.models import (
 from app.models.city import City
 from app.schemas.evidence import EvidenceCreate
 from app.schemas.report import ReportCreate
+from app.services.evidence_processor import EvidenceProcessor
+
+logger = logging.getLogger(__name__)
 
 
 def generate_short_id() -> str:
@@ -145,6 +151,57 @@ class ReportService:
 
                 logging.getLogger(__name__).warning(
                     "Failed to trigger webhooks for new report %s",
+                    report.id,
+                    exc_info=True,
+                )
+
+        # Process inline evidence if provided
+        if data.evidence_image_base64:
+            try:
+                image_bytes = base64.b64decode(data.evidence_image_base64)
+                processor = EvidenceProcessor(self.db)
+                result = await processor.verify_and_process(
+                    image_bytes=image_bytes,
+                    timestamp=data.evidence_timestamp,
+                    latitude=data.location.lat,
+                    longitude=data.location.lon,
+                    signature=data.evidence_signature,
+                    device_id=data.evidence_device_id,
+                    image_hash=data.evidence_image_hash,
+                )
+
+                # Upload watermarked image to S3
+                from app.services.whatsapp.media import MediaService
+
+                media_svc = MediaService.__new__(MediaService)
+                s3_key = f"evidence/{report.id}/{result.image_hash}.jpg"
+                url = await media_svc._upload_to_s3(
+                    key=s3_key,
+                    data=result.processed_image,
+                    content_type=data.evidence_media_type,
+                )
+
+                evidence = Evidence(
+                    report_id=report.id,
+                    type=EvidenceType.PHOTO,
+                    url=url,
+                    mime_type=data.evidence_media_type,
+                    file_size=len(result.processed_image),
+                    capture_verified=result.verified,
+                    image_hash=result.image_hash,
+                    capture_signature=data.evidence_signature,
+                    capture_metadata={
+                        "device_id": data.evidence_device_id,
+                        "capture_method": data.evidence_capture_method,
+                        "timestamp": data.evidence_timestamp,
+                        "verification_reasons": result.reasons,
+                    },
+                )
+                self.db.add(evidence)
+                await self.db.flush()
+            except Exception:
+                logger.warning(
+                    "Failed to process inline evidence for report %s",
                     report.id,
                     exc_info=True,
                 )

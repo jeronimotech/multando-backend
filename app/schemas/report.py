@@ -75,6 +75,29 @@ class ReportCreate(ReportBase):
         default=ReportSource.MOBILE, description="Source of the report"
     )
 
+    # Optional evidence attachment
+    evidence_image_base64: str | None = Field(
+        default=None, description="Base64 encoded evidence image"
+    )
+    evidence_media_type: str = Field(
+        default="image/jpeg", description="MIME type of the evidence"
+    )
+    evidence_image_hash: str | None = Field(
+        default=None, description="SHA-256 hash of the image"
+    )
+    evidence_signature: str | None = Field(
+        default=None, description="HMAC signature"
+    )
+    evidence_timestamp: str | None = Field(
+        default=None, description="Capture timestamp"
+    )
+    evidence_device_id: str | None = Field(
+        default=None, description="Device identifier"
+    )
+    evidence_capture_method: str | None = Field(
+        default=None, description="camera or gallery"
+    )
+
     @field_validator("vehicle_plate")
     @classmethod
     def validate_vehicle_plate(cls, v: str | None) -> str | None:
