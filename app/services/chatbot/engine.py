@@ -395,12 +395,27 @@ async def process_message(
 
     # Build the new user message
     if image_base64:
+        # Auto-detect media type from image bytes
+        detected_type = image_media_type
+        try:
+            raw = base64.b64decode(image_base64[:32])
+            if raw[:8] == b'\x89PNG\r\n\x1a\n':
+                detected_type = "image/png"
+            elif raw[:2] == b'\xff\xd8':
+                detected_type = "image/jpeg"
+            elif raw[:4] == b'RIFF' and raw[8:12] == b'WEBP':
+                detected_type = "image/webp"
+            elif raw[:3] == b'GIF':
+                detected_type = "image/gif"
+        except Exception:
+            pass
+
         user_content = [
             {
                 "type": "image",
                 "source": {
                     "type": "base64",
-                    "media_type": image_media_type,
+                    "media_type": detected_type,
                     "data": image_base64,
                 },
             },
