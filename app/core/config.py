@@ -37,10 +37,11 @@ class Settings(BaseSettings):
     # CORS — configurable via env var
     CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:8000"]
 
-    # AWS S3 (for evidence uploads)
+    # AWS S3 / MinIO (for evidence uploads)
     AWS_ACCESS_KEY_ID: str = ""
     AWS_SECRET_ACCESS_KEY: str = ""
     AWS_REGION: str = "us-east-1"
+    S3_ENDPOINT_URL: str = ""  # MinIO endpoint (e.g. https://minio.example.com)
     S3_BUCKET: str = "multando-evidence"
     STORAGE_BASE_URL: str = "https://storage.multando.com"
 

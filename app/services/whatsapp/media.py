@@ -84,22 +84,38 @@ class MediaService:
 
     @staticmethod
     async def _static_upload_to_s3(key: str, data: bytes, content_type: str) -> str:
-        """Static S3 upload."""
+        """Static S3/MinIO upload."""
         import asyncio
 
         def _put() -> str:
-            s3 = boto3.client(
-                "s3",
-                aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-                aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-                region_name=settings.AWS_REGION,
-            )
+            client_kwargs = {
+                "aws_access_key_id": settings.AWS_ACCESS_KEY_ID,
+                "aws_secret_access_key": settings.AWS_SECRET_ACCESS_KEY,
+                "region_name": settings.AWS_REGION,
+            }
+            if settings.S3_ENDPOINT_URL:
+                client_kwargs["endpoint_url"] = settings.S3_ENDPOINT_URL
+
+            s3 = boto3.client("s3", **client_kwargs)
+
+            # Auto-create bucket if it doesn't exist (MinIO)
+            try:
+                s3.head_bucket(Bucket=settings.S3_BUCKET)
+            except ClientError:
+                try:
+                    s3.create_bucket(Bucket=settings.S3_BUCKET)
+                except Exception:
+                    pass
+
             s3.put_object(
                 Bucket=settings.S3_BUCKET,
                 Key=key,
                 Body=data,
                 ContentType=content_type,
             )
+
+            if settings.S3_ENDPOINT_URL:
+                return f"{settings.STORAGE_BASE_URL}/{key}"
             return f"https://{settings.S3_BUCKET}.s3.{settings.AWS_REGION}.amazonaws.com/{key}"
 
         return await asyncio.to_thread(_put)
@@ -110,31 +126,5 @@ class MediaService:
         data: bytes,
         content_type: str,
     ) -> str:
-        """Upload bytes to S3 and return the public URL.
-
-        Runs the blocking boto3 call in a thread to avoid
-        blocking the async event loop.
-        """
-
-        def _put() -> str:
-            s3 = boto3.client(
-                "s3",
-                aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-                aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-                region_name=settings.AWS_REGION,
-            )
-            try:
-                s3.put_object(
-                    Bucket=settings.S3_BUCKET,
-                    Key=key,
-                    Body=data,
-                    ContentType=content_type,
-                )
-            except ClientError as exc:
-                logger.error("S3 upload failed for key=%s: %s", key, exc)
-                raise
-            url = f"https://{settings.S3_BUCKET}.s3.{settings.AWS_REGION}.amazonaws.com/{key}"
-            logger.info("Uploaded to S3: %s", url)
-            return url
-
-        return await asyncio.get_event_loop().run_in_executor(None, _put)
+        """Upload bytes to S3/MinIO. Delegates to the static method."""
+        return await MediaService._static_upload_to_s3(key, data, content_type)
