@@ -47,6 +47,23 @@ MODEL = settings.ANTHROPIC_MODEL
 MAX_TOOL_ROUNDS = 5  # Prevent infinite tool-call loops
 
 
+def _detect_media_type(b64_data: str, fallback: str = "image/jpeg") -> str:
+    """Detect image media type from base64 data magic bytes."""
+    try:
+        raw = base64.b64decode(b64_data[:32])
+        if raw[:8] == b'\x89PNG\r\n\x1a\n':
+            return "image/png"
+        if raw[:2] == b'\xff\xd8':
+            return "image/jpeg"
+        if raw[:4] == b'RIFF' and raw[8:12] == b'WEBP':
+            return "image/webp"
+        if raw[:3] == b'GIF':
+            return "image/gif"
+    except Exception:
+        pass
+    return fallback
+
+
 def _get_client() -> anthropic.Anthropic:
     """Create an Anthropic client using the configured API key."""
     if not settings.ANTHROPIC_API_KEY:
@@ -84,7 +101,8 @@ async def _load_conversation_history(
 
         # Check if message has image metadata
         if msg.message_metadata and msg.message_metadata.get("image_base64"):
-            media_type = msg.message_metadata.get("image_media_type", "image/jpeg")
+            img_b64 = msg.message_metadata["image_base64"]
+            media_type = _detect_media_type(img_b64)
             claude_messages.append({
                 "role": role,
                 "content": [
@@ -396,19 +414,7 @@ async def process_message(
     # Build the new user message
     if image_base64:
         # Auto-detect media type from image bytes
-        detected_type = image_media_type
-        try:
-            raw = base64.b64decode(image_base64[:32])
-            if raw[:8] == b'\x89PNG\r\n\x1a\n':
-                detected_type = "image/png"
-            elif raw[:2] == b'\xff\xd8':
-                detected_type = "image/jpeg"
-            elif raw[:4] == b'RIFF' and raw[8:12] == b'WEBP':
-                detected_type = "image/webp"
-            elif raw[:3] == b'GIF':
-                detected_type = "image/gif"
-        except Exception:
-            pass
+        detected_type = _detect_media_type(image_base64, image_media_type)
 
         user_content = [
             {
