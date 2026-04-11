@@ -196,9 +196,13 @@ async def _execute_tool(
                         image_hash=ev_meta.get("image_hash"),
                     )
 
-                    # Store watermarked image as base64 data-URI evidence
-                    watermarked_b64 = base64.b64encode(result.processed_image).decode()
-                    evidence_url = f"data:image/jpeg;base64,{watermarked_b64}"
+                    # Upload watermarked image to storage
+                    from app.services.whatsapp.media import MediaService
+
+                    s3_key = f"evidence/{report.id}/{result.image_hash}.jpg"
+                    evidence_url = await MediaService.upload_evidence(
+                        s3_key, result.processed_image, "image/jpeg"
+                    )
 
                     evidence = Evidence(
                         report_id=report.id,

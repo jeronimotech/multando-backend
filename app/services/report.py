@@ -170,15 +170,12 @@ class ReportService:
                     image_hash=data.evidence_image_hash,
                 )
 
-                # Upload watermarked image to S3
+                # Upload watermarked image to storage
                 from app.services.whatsapp.media import MediaService
 
-                media_svc = MediaService.__new__(MediaService)
                 s3_key = f"evidence/{report.id}/{result.image_hash}.jpg"
-                url = await media_svc._upload_to_s3(
-                    key=s3_key,
-                    data=result.processed_image,
-                    content_type=data.evidence_media_type,
+                url = await MediaService.upload_evidence(
+                    s3_key, result.processed_image, data.evidence_media_type
                 )
 
                 evidence = Evidence(

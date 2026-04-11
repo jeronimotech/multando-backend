@@ -70,6 +70,40 @@ class MediaService:
             logger.info("No AWS credentials configured - using placeholder URL")
             return f"{settings.STORAGE_BASE_URL}/{key}"
 
+    @staticmethod
+    async def upload_evidence(key: str, data: bytes, content_type: str) -> str:
+        """Upload evidence bytes to S3 or return a placeholder URL.
+
+        This is a static method so it can be called without a full
+        MediaService instance.
+        """
+        if settings.AWS_ACCESS_KEY_ID:
+            return await MediaService._static_upload_to_s3(key, data, content_type)
+        logger.info("No AWS credentials configured - using placeholder URL")
+        return f"{settings.STORAGE_BASE_URL}/{key}"
+
+    @staticmethod
+    async def _static_upload_to_s3(key: str, data: bytes, content_type: str) -> str:
+        """Static S3 upload."""
+        import asyncio
+
+        def _put() -> str:
+            s3 = boto3.client(
+                "s3",
+                aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+                aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+                region_name=settings.AWS_REGION,
+            )
+            s3.put_object(
+                Bucket=settings.S3_BUCKET,
+                Key=key,
+                Body=data,
+                ContentType=content_type,
+            )
+            return f"https://{settings.S3_BUCKET}.s3.{settings.AWS_REGION}.amazonaws.com/{key}"
+
+        return await asyncio.to_thread(_put)
+
     async def _upload_to_s3(
         self,
         key: str,
