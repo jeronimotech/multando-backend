@@ -164,6 +164,25 @@ async def _execute_tool(
                 ensure_ascii=False,
             )
 
+        elif tool_name == "get_vehicle_types":
+            from app.models import VehicleType
+            result = await db.execute(select(VehicleType))
+            types = result.scalars().all()
+            return json.dumps(
+                [
+                    {
+                        "id": vt.id,
+                        "code": vt.code,
+                        "name_es": vt.name_es,
+                        "name_en": vt.name_en,
+                        "icon": vt.icon,
+                        "requires_plate": vt.requires_plate,
+                    }
+                    for vt in types
+                ],
+                ensure_ascii=False,
+            )
+
         elif tool_name == "create_report":
             svc = ReportService(db)
             report_data = ReportCreate(

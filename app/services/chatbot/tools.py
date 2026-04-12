@@ -123,6 +123,18 @@ TOOLS = [
         },
     },
     {
+        "name": "get_vehicle_types",
+        "description": (
+            "Obtener la lista de tipos de vehiculo disponibles. "
+            "/ Get the list of available vehicle types."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
+    {
         "name": "analyze_evidence",
         "description": (
             "Analizar una imagen enviada por el usuario para detectar infracciones de transito. "
