@@ -90,12 +90,21 @@ def _build_user_public(user) -> UserPublic:
     )
 
 
+def _fix_evidence_url(url: str) -> str:
+    """Ensure evidence URL includes bucket name in path."""
+    if url and settings.STORAGE_BASE_URL and url.startswith(settings.STORAGE_BASE_URL):
+        path = url[len(settings.STORAGE_BASE_URL):]
+        if not path.startswith(f"/{settings.S3_BUCKET}/"):
+            return f"{settings.STORAGE_BASE_URL}/{settings.S3_BUCKET}{path}"
+    return url
+
+
 def _build_evidence_response(evidence) -> EvidenceResponse:
     """Build an EvidenceResponse from an evidence model."""
     return EvidenceResponse(
         id=evidence.id,
         type=EvidenceType(evidence.type.value),
-        url=evidence.url,
+        url=_fix_evidence_url(evidence.url),
         thumbnail_url=evidence.thumbnail_url,
         mime_type=evidence.mime_type,
         ipfs_hash=evidence.ipfs_hash,
@@ -298,13 +307,11 @@ async def get_evidence_url(
         raise HTTPException(status_code=404, detail="Evidence not found")
 
     url = evidence.url
-    # If URL is an S3 key path, generate presigned URL
-    if url and not url.startswith("http"):
-        url = await MediaService.get_presigned_url(url)
-    elif url and "s3." in url or (url and settings.STORAGE_BASE_URL and settings.STORAGE_BASE_URL in url):
-        # Extract key from full URL
-        key = url.split(f"{settings.S3_BUCKET}/")[-1] if settings.S3_BUCKET in url else url.split("/", 3)[-1]
-        url = await MediaService.get_presigned_url(key)
+    # Ensure the URL includes the bucket name in the path
+    if url and settings.STORAGE_BASE_URL and url.startswith(settings.STORAGE_BASE_URL):
+        path_after_base = url[len(settings.STORAGE_BASE_URL):]
+        if not path_after_base.startswith(f"/{settings.S3_BUCKET}/"):
+            url = f"{settings.STORAGE_BASE_URL}/{settings.S3_BUCKET}{path_after_base}"
 
     return {"url": url, "expires_in": 900}
 
