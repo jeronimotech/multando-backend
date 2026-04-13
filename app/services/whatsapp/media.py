@@ -85,17 +85,19 @@ class MediaService:
                 "aws_secret_access_key": settings.AWS_SECRET_ACCESS_KEY,
                 "region_name": settings.AWS_REGION,
             }
-            # Use PUBLIC endpoint for presigned URLs (not internal)
-            if settings.STORAGE_BASE_URL:
-                client_kwargs["endpoint_url"] = settings.STORAGE_BASE_URL
-            elif settings.S3_ENDPOINT_URL:
+            # Sign with internal endpoint (MinIO validates against this)
+            if settings.S3_ENDPOINT_URL:
                 client_kwargs["endpoint_url"] = settings.S3_ENDPOINT_URL
             s3 = boto3.client("s3", **client_kwargs)
-            return s3.generate_presigned_url(
+            url = s3.generate_presigned_url(
                 "get_object",
                 Params={"Bucket": settings.S3_BUCKET, "Key": key},
                 ExpiresIn=expires_in,
             )
+            # Replace internal hostname with public one for external access
+            if settings.S3_ENDPOINT_URL and settings.STORAGE_BASE_URL:
+                url = url.replace(settings.S3_ENDPOINT_URL, settings.STORAGE_BASE_URL, 1)
+            return url
 
         if not settings.AWS_ACCESS_KEY_ID:
             return f"{settings.STORAGE_BASE_URL}/{key}"
