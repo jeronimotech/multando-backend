@@ -71,6 +71,30 @@ class MediaService:
             return f"{settings.STORAGE_BASE_URL}/{key}"
 
     @staticmethod
+    async def get_presigned_url(key: str, expires_in: int = 900) -> str:
+        """Generate a presigned URL for private evidence access (15 min default)."""
+        import asyncio
+
+        def _sign() -> str:
+            client_kwargs = {
+                "aws_access_key_id": settings.AWS_ACCESS_KEY_ID,
+                "aws_secret_access_key": settings.AWS_SECRET_ACCESS_KEY,
+                "region_name": settings.AWS_REGION,
+            }
+            if settings.S3_ENDPOINT_URL:
+                client_kwargs["endpoint_url"] = settings.S3_ENDPOINT_URL
+            s3 = boto3.client("s3", **client_kwargs)
+            return s3.generate_presigned_url(
+                "get_object",
+                Params={"Bucket": settings.S3_BUCKET, "Key": key},
+                ExpiresIn=expires_in,
+            )
+
+        if not settings.AWS_ACCESS_KEY_ID:
+            return f"{settings.STORAGE_BASE_URL}/{key}"
+        return await asyncio.to_thread(_sign)
+
+    @staticmethod
     async def upload_evidence(key: str, data: bytes, content_type: str) -> str:
         """Upload evidence bytes to S3 or return a placeholder URL.
 
@@ -108,30 +132,11 @@ class MediaService:
                 except Exception:
                     pass
 
-            # Ensure public-read policy for evidence access
-            try:
-                policy = {
-                    "Version": "2012-10-17",
-                    "Statement": [{
-                        "Effect": "Allow",
-                        "Principal": {"AWS": "*"},
-                        "Action": ["s3:GetObject"],
-                        "Resource": [f"arn:aws:s3:::{settings.S3_BUCKET}/*"],
-                    }],
-                }
-                s3.put_bucket_policy(
-                    Bucket=settings.S3_BUCKET,
-                    Policy=_json.dumps(policy),
-                )
-            except Exception:
-                pass
-
             s3.put_object(
                 Bucket=settings.S3_BUCKET,
                 Key=key,
                 Body=data,
                 ContentType=content_type,
-                ACL="public-read",
             )
 
             if settings.S3_ENDPOINT_URL:

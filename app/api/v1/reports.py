@@ -9,6 +9,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Query, status
 
 from app.api.deps import CurrentUser, DbSession
+from app.core.config import settings
 from app.models import ReportStatus
 from app.schemas.common import MessageResponse
 from app.schemas.evidence import EvidenceResponse, EvidenceType
@@ -274,6 +275,38 @@ async def get_report_markers(
             "createdAt": r.created_at.isoformat() if r.created_at else "",
         })
     return markers
+
+
+@router.get(
+    "/evidence/{evidence_id}/url",
+    summary="Get presigned URL for evidence image",
+    description="Returns a temporary signed URL to access a private evidence image.",
+)
+async def get_evidence_url(
+    evidence_id: int,
+    current_user: CurrentUser,
+    db: DbSession,
+):
+    """Get a presigned URL for an evidence image. Requires authentication."""
+    from sqlalchemy import select
+    from app.models.report import Evidence
+    from app.services.whatsapp.media import MediaService
+
+    result = await db.execute(select(Evidence).where(Evidence.id == evidence_id))
+    evidence = result.scalar_one_or_none()
+    if not evidence:
+        raise HTTPException(status_code=404, detail="Evidence not found")
+
+    url = evidence.url
+    # If URL is an S3 key path, generate presigned URL
+    if url and not url.startswith("http"):
+        url = await MediaService.get_presigned_url(url)
+    elif url and "s3." in url or (url and settings.STORAGE_BASE_URL and settings.STORAGE_BASE_URL in url):
+        # Extract key from full URL
+        key = url.split(f"{settings.S3_BUCKET}/")[-1] if settings.S3_BUCKET in url else url.split("/", 3)[-1]
+        url = await MediaService.get_presigned_url(key)
+
+    return {"url": url, "expires_in": 900}
 
 
 @router.get(
