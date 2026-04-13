@@ -80,24 +80,10 @@ class MediaService:
         import asyncio
 
         def _sign() -> str:
-            client_kwargs = {
-                "aws_access_key_id": settings.AWS_ACCESS_KEY_ID,
-                "aws_secret_access_key": settings.AWS_SECRET_ACCESS_KEY,
-                "region_name": settings.AWS_REGION,
-            }
-            # Sign with internal endpoint (MinIO validates against this)
-            if settings.S3_ENDPOINT_URL:
-                client_kwargs["endpoint_url"] = settings.S3_ENDPOINT_URL
-            s3 = boto3.client("s3", **client_kwargs)
-            url = s3.generate_presigned_url(
-                "get_object",
-                Params={"Bucket": settings.S3_BUCKET, "Key": key},
-                ExpiresIn=expires_in,
-            )
-            # Replace internal hostname with public one for external access
-            if settings.S3_ENDPOINT_URL and settings.STORAGE_BASE_URL:
-                url = url.replace(settings.S3_ENDPOINT_URL, settings.STORAGE_BASE_URL, 1)
-            return url
+            # For MinIO behind Railway proxy, presigned URLs don't work
+            # reliably (host mismatch). Return direct public URL instead —
+            # bucket has public-read policy.
+            return f"{settings.STORAGE_BASE_URL}/{settings.S3_BUCKET}/{key}"
 
         if not settings.AWS_ACCESS_KEY_ID:
             return f"{settings.STORAGE_BASE_URL}/{key}"
@@ -131,7 +117,7 @@ class MediaService:
 
             s3 = boto3.client("s3", **client_kwargs)
 
-            # Auto-create bucket and ensure public-read policy (MinIO)
+            # Auto-create bucket and set public-read policy (MinIO)
             import json as _json
             try:
                 s3.head_bucket(Bucket=settings.S3_BUCKET)
@@ -141,6 +127,24 @@ class MediaService:
                 except Exception:
                     pass
 
+            # Ensure public-read policy
+            try:
+                policy = {
+                    "Version": "2012-10-17",
+                    "Statement": [{
+                        "Effect": "Allow",
+                        "Principal": {"AWS": "*"},
+                        "Action": ["s3:GetObject"],
+                        "Resource": [f"arn:aws:s3:::{settings.S3_BUCKET}/*"],
+                    }],
+                }
+                s3.put_bucket_policy(
+                    Bucket=settings.S3_BUCKET,
+                    Policy=_json.dumps(policy),
+                )
+            except Exception:
+                pass
+
             s3.put_object(
                 Bucket=settings.S3_BUCKET,
                 Key=key,
@@ -149,7 +153,7 @@ class MediaService:
             )
 
             if settings.S3_ENDPOINT_URL:
-                return f"{settings.STORAGE_BASE_URL}/{key}"
+                return f"{settings.STORAGE_BASE_URL}/{settings.S3_BUCKET}/{key}"
             return f"https://{settings.S3_BUCKET}.s3.{settings.AWS_REGION}.amazonaws.com/{key}"
 
         return await asyncio.to_thread(_put)
