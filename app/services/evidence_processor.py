@@ -264,11 +264,27 @@ class EvidenceProcessor:
         red_t = (220, 50, 50, 180)
         shadow = (0, 0, 0, 120)
 
-        # -- Top-left: MULTANDO branding --
-        brand_text = "MULTANDO"
-        # Shadow for readability
-        draw.text((pad + 1, pad + 1), brand_text, fill=shadow, font=font_brand)
-        draw.text((pad, pad), brand_text, fill=white_t, font=font_brand)
+        # -- Top-left: Multando logo --
+        logo_size = max(48, w // 12)
+        try:
+            from pathlib import Path
+            logo_path = Path(__file__).parent.parent / "assets" / "logo.png"
+            if logo_path.exists():
+                logo = Image.open(logo_path).convert("RGBA")
+                logo.thumbnail((logo_size, logo_size), Image.Resampling.LANCZOS)
+                # Apply 80% opacity to the logo
+                alpha = logo.split()[3]
+                alpha = alpha.point(lambda p: int(p * 0.85))
+                logo.putalpha(alpha)
+                # Paste with a subtle dark background circle for legibility
+                bg_size = logo.size[0] + 16
+                bg = Image.new("RGBA", (bg_size, bg_size), (0, 0, 0, 80))
+                overlay.paste(bg, (pad, pad), bg)
+                overlay.paste(logo, (pad + 8, pad + 8), logo)
+        except Exception:
+            # Fallback to text if logo loading fails
+            draw.text((pad + 1, pad + 1), "MULTANDO", fill=shadow, font=font_brand)
+            draw.text((pad, pad), "MULTANDO", fill=white_t, font=font_brand)
 
         # -- Top-right: VERIFIED / UNVERIFIED badge --
         badge_text = "VERIFIED" if verified else "UNVERIFIED"
@@ -299,11 +315,10 @@ class EvidenceProcessor:
             gps_text, fill=white_t, font=font_meta,
         )
 
-        # -- Below branding: truncated hash for audit --
+        # -- Below logo: truncated hash for audit --
         if image_hash:
             hash_text = f"HASH: {image_hash[:16]}..."
-            brand_bbox = draw.textbbox((0, 0), brand_text, font=font_brand)
-            hash_y = pad + (brand_bbox[3] - brand_bbox[1]) + 4
+            hash_y = pad + logo_size + 24
             draw.text((pad + 1, hash_y + 1), hash_text, fill=shadow, font=font_hash)
             draw.text((pad, hash_y), hash_text, fill=white_t, font=font_hash)
 
