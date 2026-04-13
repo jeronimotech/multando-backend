@@ -72,7 +72,11 @@ class MediaService:
 
     @staticmethod
     async def get_presigned_url(key: str, expires_in: int = 900) -> str:
-        """Generate a presigned URL for private evidence access (15 min default)."""
+        """Generate a presigned URL for private evidence access (15 min default).
+
+        Uses STORAGE_BASE_URL (public endpoint) for presigned URLs so they're
+        accessible from outside the Railway network.
+        """
         import asyncio
 
         def _sign() -> str:
@@ -81,7 +85,10 @@ class MediaService:
                 "aws_secret_access_key": settings.AWS_SECRET_ACCESS_KEY,
                 "region_name": settings.AWS_REGION,
             }
-            if settings.S3_ENDPOINT_URL:
+            # Use PUBLIC endpoint for presigned URLs (not internal)
+            if settings.STORAGE_BASE_URL:
+                client_kwargs["endpoint_url"] = settings.STORAGE_BASE_URL
+            elif settings.S3_ENDPOINT_URL:
                 client_kwargs["endpoint_url"] = settings.S3_ENDPOINT_URL
             s3 = boto3.client("s3", **client_kwargs)
             return s3.generate_presigned_url(
