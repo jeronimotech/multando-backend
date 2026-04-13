@@ -98,7 +98,8 @@ class MediaService:
 
             s3 = boto3.client("s3", **client_kwargs)
 
-            # Auto-create bucket if it doesn't exist (MinIO)
+            # Auto-create bucket and ensure public-read policy (MinIO)
+            import json as _json
             try:
                 s3.head_bucket(Bucket=settings.S3_BUCKET)
             except ClientError:
@@ -107,11 +108,30 @@ class MediaService:
                 except Exception:
                     pass
 
+            # Ensure public-read policy for evidence access
+            try:
+                policy = {
+                    "Version": "2012-10-17",
+                    "Statement": [{
+                        "Effect": "Allow",
+                        "Principal": {"AWS": "*"},
+                        "Action": ["s3:GetObject"],
+                        "Resource": [f"arn:aws:s3:::{settings.S3_BUCKET}/*"],
+                    }],
+                }
+                s3.put_bucket_policy(
+                    Bucket=settings.S3_BUCKET,
+                    Policy=_json.dumps(policy),
+                )
+            except Exception:
+                pass
+
             s3.put_object(
                 Bucket=settings.S3_BUCKET,
                 Key=key,
                 Body=data,
                 ContentType=content_type,
+                ACL="public-read",
             )
 
             if settings.S3_ENDPOINT_URL:
