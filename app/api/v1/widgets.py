@@ -277,9 +277,9 @@ async def reports_map_widget(
       }};
 
       var map = L.map('map').setView([{lat}, {lon}], {zoom});
-      L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
+      L.tileLayer('https://{{s}}.basemaps.cartocdn.com/light_all/{{z}}/{{x}}/{{y}}{{r}}.png', {{
         maxZoom: 19,
-        attribution: '© OpenStreetMap'
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>'
       }}).addTo(map);
 
       var useCluster = {cluster_js};
