@@ -64,6 +64,41 @@ def _extract_quick_replies(text: str) -> tuple[list[dict], str]:
     clean = _QUICK_REPLY_RE.sub("", text).strip()
     # Collapse multiple blank lines
     clean = re.sub(r"\n{3,}", "\n\n", clean)
+
+    # Fallback: Claude sometimes forgets the [[...]] markers for yes/no
+    # confirmations even though the system prompt requires them. If the
+    # message ends with a question whose last ~200 chars contain a
+    # confirmation phrase, inject default Yes/No buttons. This keeps the
+    # UX consistent across minor prompt-following drift.
+    if not replies and clean.endswith("?"):
+        tail = clean[-240:].lower()
+        confirm_cues_es = [
+            "confirmas", "esta correcto", "está correcto", "es correcto",
+            "todo bien", "todo esta bien", "todo está bien",
+            "procedo", "lo creamos", "lo envio", "lo envío",
+            "continuamos", "estas de acuerdo", "estás de acuerdo",
+            "quieres enviar", "deseas enviar", "todo esta listo",
+            "todo está listo", "enviamos el reporte",
+        ]
+        confirm_cues_en = [
+            "confirm", "is this correct", "is that correct",
+            "does this look right", "shall i create",
+            "should i create", "ready to submit", "everything correct",
+            "all correct", "proceed",
+        ]
+        lang_es = any(cue in tail for cue in confirm_cues_es)
+        lang_en = any(cue in tail for cue in confirm_cues_en)
+        if lang_es:
+            replies = [
+                {"label": "Si, confirmar", "value": "Si"},
+                {"label": "No, cancelar", "value": "No"},
+            ]
+        elif lang_en:
+            replies = [
+                {"label": "Yes, confirm", "value": "Yes"},
+                {"label": "No, cancel", "value": "No"},
+            ]
+
     return replies, clean
 
 
