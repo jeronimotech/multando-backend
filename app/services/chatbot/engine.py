@@ -583,13 +583,28 @@ async def process_message(
                 "role": "assistant",
                 "content": response.content,
             })
+
+            # Heuristic: if the stray text ends with "?" it is almost always
+            # a yes/no or choice question and MUST get quick_replies. Tell
+            # Claude explicitly so the optional field is actually populated.
+            wrap_instruction = (
+                "Please wrap the previous assistant response by calling the "
+                "send_reply tool. Pass the same message text in `message`."
+            )
+            if stray_text.endswith("?"):
+                wrap_instruction += (
+                    " The message ends with a question, so you MUST include a "
+                    "`quick_replies` array with the appropriate options. For "
+                    "confirmation questions use "
+                    "[{label:\"Si, confirmar\",value:\"Si\"},"
+                    "{label:\"No, cancelar\",value:\"No\"}] in Spanish, or "
+                    "[{label:\"Yes, confirm\",value:\"Yes\"},"
+                    "{label:\"No, cancel\",value:\"No\"}] in English. For "
+                    "other choice questions list the options as quick_replies."
+                )
             claude_messages.append({
                 "role": "user",
-                "content": (
-                    "Please wrap your previous response by calling the "
-                    "send_reply tool with the same message and any "
-                    "appropriate quick_replies."
-                ),
+                "content": wrap_instruction,
             })
 
             try:
