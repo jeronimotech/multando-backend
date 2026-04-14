@@ -107,7 +107,16 @@ async def reports_map_widget(
 
     # Compute the API base URL from the inbound request so the widget works
     # on sandbox, staging, and production without hard-coding a host.
-    base_url = str(request.base_url).rstrip("/")
+    # Respect X-Forwarded-Proto from Railway's edge proxy (defaults to HTTPS
+    # in production so the widget doesn't hit mixed-content blocks).
+    forwarded_proto = request.headers.get("x-forwarded-proto")
+    scheme = forwarded_proto or ("https" if request.url.hostname not in ("localhost", "127.0.0.1") else request.url.scheme)
+    host = request.url.hostname
+    port = request.url.port
+    if port and port not in (80, 443):
+        base_url = f"{scheme}://{host}:{port}"
+    else:
+        base_url = f"{scheme}://{host}"
     geojson_params: list[str] = [f"status={status_filter}", f"limit={limit}"]
     if city_id is not None:
         geojson_params.append(f"city_id={city_id}")
