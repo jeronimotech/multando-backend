@@ -142,6 +142,16 @@ class User(TimestampMixin, Base):
         Numeric(5, 2), default=Decimal("100.00"), nullable=False
     )
 
+    # Abuse prevention counters (see app/services/verification.py and
+    # app/services/report.py for where these are maintained). Used to
+    # compute ``rejection_rate`` for the UI warning flag.
+    total_reports_count: Mapped[int] = mapped_column(
+        Integer, default=0, nullable=False
+    )
+    rejected_reports_count: Mapped[int] = mapped_column(
+        Integer, default=0, nullable=False
+    )
+
     # Status
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
@@ -191,6 +201,30 @@ class User(TimestampMixin, Base):
     api_keys: Mapped[list["ApiKey"]] = relationship(
         "ApiKey", back_populates="user", cascade="all, delete-orphan"
     )
+
+    @property
+    def rejection_rate(self) -> float:
+        """Ratio of reports this user has had rejected by authority.
+
+        Uses ``rejected_reports_count / max(total_reports_count, 1)`` so
+        brand-new users with zero submissions see a 0.0 rate rather than
+        dividing by zero.
+        """
+        total = self.total_reports_count or 0
+        rejected = self.rejected_reports_count or 0
+        return rejected / max(total, 1)
+
+    @property
+    def rejection_rate_warning(self) -> bool:
+        """Whether the user has crossed the abuse-warning threshold.
+
+        We only flag users with enough history to be meaningful
+        (``total_reports_count >= 10``) and a rejection rate above 30%.
+        Consumed by the chatbot and report-creation responses.
+        """
+        if (self.total_reports_count or 0) < 10:
+            return False
+        return self.rejection_rate > 0.30
 
     def __repr__(self) -> str:
         return f"<User {self.id} ({self.email or self.phone_number or self.username})>"

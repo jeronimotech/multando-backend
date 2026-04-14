@@ -84,7 +84,13 @@ async def verify_report(
                 detail=error_message,
             )
 
-    return _build_report_detail(report)
+    # Verifier is a peer, not the reporter — redact identity so voting
+    # on a report can't be used to dox the submitter.
+    return _build_report_detail(
+        report,
+        include_reporter_identity=False,
+        include_rejection_warning=False,
+    )
 
 
 @router.post(
@@ -147,7 +153,13 @@ async def reject_report(
                 detail=error_message,
             )
 
-    return _build_report_detail(report)
+    # Verifier is a peer, not the reporter — redact identity so voting
+    # on a report can't be used to dox the submitter.
+    return _build_report_detail(
+        report,
+        include_reporter_identity=False,
+        include_rejection_warning=False,
+    )
 
 
 @router.get(

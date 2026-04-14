@@ -99,6 +99,24 @@ class Settings(BaseSettings):
     HOT_WALLET_KEYPAIR_PATH: str = ""
     HOT_WALLET_MIN_BALANCE: float = 1000.0
 
+    # Abuse prevention / reporter safeguards
+    # Max MULTA a single user can earn from reports in one calendar month.
+    # Anything past the cap is silently truncated and an activity log entry
+    # is emitted so the UI can explain the freeze.
+    MAX_MULTA_PER_USER_PER_MONTH: float = 500.0
+    # Points debit applied when an authority rejects one of the user's
+    # reports. Kept positive here; the penalty activity stores it negated.
+    FALSE_REPORT_POINT_PENALTY: int = 10
+    # Per-user report submission rate limits.
+    MAX_REPORTS_PER_HOUR: int = 5
+    MAX_REPORTS_PER_DAY: int = 20
+    # Plate-level throttling (anti-harassment).
+    MAX_REPORTS_PER_PLATE_24H: int = 3
+    PLATE_COOLDOWN_HOURS: int = 24
+    # A second report from >=1 km away is treated as a distinct sighting
+    # and allowed even after the global plate cap is reached.
+    PLATE_COORDINATED_RADIUS_KM: float = 1.0
+
     @field_validator("DATABASE_URL", mode="before")
     @classmethod
     def validate_database_url(cls, v: Any) -> str:

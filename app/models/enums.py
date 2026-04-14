@@ -70,6 +70,7 @@ class ActivityType(str, Enum):
     REFERRAL = "referral"
     LEVEL_UP = "level_up"
     BADGE_EARNED = "badge_earned"
+    FALSE_REPORT_PENALTY = "false_report_penalty"
 
 
 class BadgeRarity(str, Enum):

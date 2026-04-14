@@ -286,6 +286,15 @@ async def _execute_tool(
             if evidence_info:
                 response_data["evidence"] = evidence_info
 
+            # Expose the abuse-warning flag so the chatbot prompt can
+            # nudge users whose reports get rejected too often. The
+            # reporter relationship is already eager-loaded on the
+            # returned report, so reading the property is cheap.
+            if report.reporter is not None and getattr(
+                report.reporter, "rejection_rate_warning", False
+            ):
+                response_data["rejection_rate_warning"] = True
+
             return json.dumps(response_data, ensure_ascii=False)
 
         elif tool_name == "list_my_reports":

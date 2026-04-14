@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -403,9 +403,14 @@ class VerificationService:
     ) -> Activity:
         """Create activity and update user points.
 
+        MULTA payouts are capped at ``settings.MAX_MULTA_PER_USER_PER_MONTH``
+        per calendar month. Anything that would exceed the cap is truncated
+        to the remaining allowance (possibly zero) and annotated in the
+        activity metadata so the UI can explain the freeze to the user.
+
         Args:
             user_id: The UUID of the user to award points to.
-            points: Number of points to award.
+            points: Number of points to award (can be negative for penalties).
             multa: Amount of MULTA tokens to award.
             activity_type: The type of activity.
             reference_type: The type of referenced entity.
@@ -415,6 +420,64 @@ class VerificationService:
         Returns:
             The created Activity object.
         """
+        metadata = dict(metadata or {})
+
+        # Monthly MULTA cap. Only applies to positive awards — penalties
+        # or zero-MULTA activities skip this branch entirely.
+        if multa > Decimal("0"):
+            cap = Decimal(str(settings.MAX_MULTA_PER_USER_PER_MONTH))
+            now = datetime.now(timezone.utc)
+            month_start = datetime(
+                now.year, now.month, 1, tzinfo=timezone.utc
+            )
+
+            earned_this_month_result = await self.db.execute(
+                select(func.coalesce(func.sum(Activity.multa_earned), 0)).where(
+                    Activity.user_id == user_id,
+                    Activity.multa_earned > 0,
+                    Activity.created_at >= month_start,
+                )
+            )
+            earned_this_month = Decimal(
+                str(earned_this_month_result.scalar() or 0)
+            )
+
+            remaining = cap - earned_this_month
+            if remaining <= Decimal("0"):
+                logger.info(
+                    "User %s hit monthly MULTA cap (%s); awarding 0 MULTA "
+                    "for %s",
+                    user_id,
+                    cap,
+                    activity_type,
+                )
+                metadata.update(
+                    {
+                        "multa_cap_hit": True,
+                        "multa_requested": str(multa),
+                        "multa_cap": str(cap),
+                    }
+                )
+                multa = Decimal("0.000000")
+            elif multa > remaining:
+                logger.info(
+                    "User %s exceeding monthly MULTA cap; truncating "
+                    "%s -> %s (cap=%s, earned=%s)",
+                    user_id,
+                    multa,
+                    remaining,
+                    cap,
+                    earned_this_month,
+                )
+                metadata.update(
+                    {
+                        "multa_cap_hit": True,
+                        "multa_requested": str(multa),
+                        "multa_cap": str(cap),
+                    }
+                )
+                multa = remaining
+
         # Create activity record
         activity = Activity(
             user_id=user_id,
@@ -423,18 +486,70 @@ class VerificationService:
             multa_earned=multa,
             reference_type=reference_type,
             reference_id=str(reference_id),
-            activity_metadata=metadata,
+            activity_metadata=metadata or None,
         )
         self.db.add(activity)
         await self.db.flush()
 
-        # Update user points
+        # Update user points. Guard against negative balances — reputation
+        # can drop but we don't want weird UI artifacts if penalties
+        # outstrip lifetime earnings.
         user = await self._get_user(user_id)
         if user:
-            user.points += points
+            user.points = max(0, (user.points or 0) + points)
             await self.db.flush()
 
         return activity
+
+    async def apply_authority_rejection_penalty(
+        self,
+        report: Report,
+    ) -> None:
+        """Apply the false-report penalty when an authority rejects a report.
+
+        * Debit the reporter's points by ``FALSE_REPORT_POINT_PENALTY``.
+        * Write an :class:`Activity` row with negative ``points_earned``
+          and ``activity_type=FALSE_REPORT_PENALTY`` so the user can see
+          the debit in their timeline.
+        * Increment ``users.rejected_reports_count`` so the rejection
+          rate warning flag stays accurate.
+        * MULTA is intentionally *not* clawed back — the token may
+          already have been paid out, and re-entrancy on blockchain
+          state is outside the scope of this penalty.
+        """
+        penalty = int(settings.FALSE_REPORT_POINT_PENALTY)
+
+        await self._award_points(
+            user_id=report.reporter_id,
+            points=-penalty,
+            multa=Decimal("0.000000"),
+            activity_type=ActivityType.FALSE_REPORT_PENALTY,
+            reference_type="report",
+            reference_id=report.id,
+            metadata={
+                "short_id": report.short_id,
+                "reason": report.rejection_reason,
+                "authority_validator_id": (
+                    str(report.authority_validator_id)
+                    if report.authority_validator_id
+                    else None
+                ),
+            },
+        )
+
+        reporter = await self._get_user(report.reporter_id)
+        if reporter is not None:
+            reporter.rejected_reports_count = (
+                reporter.rejected_reports_count or 0
+            ) + 1
+            await self.db.flush()
+
+        logger.info(
+            "Applied false-report penalty: report=%s reporter=%s points=-%d",
+            report.id,
+            report.reporter_id,
+            penalty,
+        )
 
     async def _check_level_up(self, user: User) -> Level | None:
         """Check if user should level up, return new level if so.

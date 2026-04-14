@@ -19,12 +19,17 @@ from app.models import (
     Infraction,
     Report,
     ReportStatus,
+    User,
     VehicleType,
 )
 from app.models.city import City
 from app.schemas.evidence import EvidenceCreate
 from app.schemas.report import ReportCreate
 from app.services.evidence_processor import EvidenceProcessor
+from app.services.rate_limiter import (
+    check_plate_cooldown,
+    check_report_rate_limit,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +86,17 @@ class ReportService:
             if not vehicle_type:
                 raise ValueError("Vehicle type not found")
 
+        # Abuse-prevention gates (Phase 2). These raise HTTPException(429)
+        # with a structured body when a limit is hit; let it propagate.
+        await check_report_rate_limit(self.db, reporter_id)
+        await check_plate_cooldown(
+            self.db,
+            reporter_id,
+            data.vehicle_plate,
+            data.location.lat,
+            data.location.lon,
+        )
+
         # Generate unique short_id
         short_id = generate_short_id()
         while await self.get_by_short_id(short_id):
@@ -127,6 +143,14 @@ class ReportService:
         )
         self.db.add(activity)
         await self.db.flush()
+
+        # Bump the reporter's lifetime submission counter so the rejection
+        # rate is computable. We load the user fresh to avoid stepping on
+        # any cached relationship state.
+        reporter = await self.db.get(User, reporter_id)
+        if reporter is not None:
+            reporter.total_reports_count = (reporter.total_reports_count or 0) + 1
+            await self.db.flush()
 
         # Trigger webhooks for report creation (in a savepoint so failures
         # don't abort the main transaction)

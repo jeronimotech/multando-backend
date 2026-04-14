@@ -37,8 +37,8 @@ TOOLS = [
                 "plate_number": {
                     "type": "string",
                     "description": (
-                        "Numero de placa del vehiculo infractor. "
-                        "/ License plate number of the offending vehicle."
+                        "Numero de placa del vehiculo reportado (tal como aparece en la evidencia). "
+                        "/ License plate number of the reported vehicle (as shown in the evidence)."
                     ),
                 },
                 "latitude": {

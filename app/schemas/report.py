@@ -163,7 +163,29 @@ class ReportSummary(BaseSchema):
 class ReportDetail(ReportSummary):
     """Schema for detailed report view."""
 
-    reporter: UserPublic = Field(description="User who submitted the report")
+    reporter: UserPublic | None = Field(
+        default=None,
+        description=(
+            "User who submitted the report. Redacted to ``null`` for "
+            "non-authority viewers to protect the reporter from retaliation."
+        ),
+    )
+    reporter_display_name: str | None = Field(
+        default=None,
+        description=(
+            "Reporter's display name only (safe to show publicly). "
+            "Populated even when ``reporter`` is redacted so the UI can "
+            "still acknowledge the submitter."
+        ),
+    )
+    rejection_rate_warning: bool = Field(
+        default=False,
+        description=(
+            "True when the reporter's rejection rate is above the abuse "
+            "threshold. Consumed by the UI to surface a warning banner. "
+            "Only populated for authority viewers — hidden to the public."
+        ),
+    )
     verifier: UserPublic | None = Field(
         default=None, description="User who verified the report"
     )

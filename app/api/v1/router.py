@@ -28,6 +28,10 @@ from app.api.v1.conversations import router as conversations_router
 from app.api.v1.evidence import router as evidence_router
 from app.api.v1.whatsapp import router as whatsapp_router
 from app.api.v1.widgets import router as widgets_router
+from app.api.v1.public_stats import (
+    router as public_stats_router,
+    public_authority_router,
+)
 
 router = APIRouter()
 
@@ -66,3 +70,5 @@ router.include_router(webhooks_router)
 router.include_router(whatsapp_router)
 router.include_router(leaderboard_router)
 router.include_router(widgets_router)
+router.include_router(public_stats_router)
+router.include_router(public_authority_router)

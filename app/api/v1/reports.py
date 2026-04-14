@@ -12,9 +12,9 @@ from fastapi.responses import JSONResponse
 
 from sqlalchemy import select
 
-from app.api.deps import CurrentUser, DbSession
+from app.api.deps import CurrentUser, DbSession, OptionalUser
 from app.core.config import settings
-from app.models import RecordSubmission, ReportStatus
+from app.models import AuthorityUser, RecordSubmission, ReportStatus, User, UserRole
 from app.schemas.common import MessageResponse
 from app.schemas.evidence import EvidenceResponse, EvidenceType
 from app.schemas.infraction import InfractionResponse
@@ -134,18 +134,72 @@ def _build_report_summary(report) -> ReportSummary:
     )
 
 
+async def _viewer_can_see_reporter(
+    viewer: User | None,
+    report,
+    db,
+) -> bool:
+    """Return True if the viewer is allowed to see full reporter identity.
+
+    Rules:
+        * The reporter themselves can always see their own record.
+        * Authority / admin roles always see full identity.
+        * Any user with an ``AuthorityUser`` membership row sees it too
+          (mirrors ``_require_authority_role`` in authority_review.py).
+        * Everyone else (anonymous or plain citizen) gets a redacted view.
+    """
+    if viewer is None:
+        return False
+    if viewer.id == report.reporter_id:
+        return True
+    if viewer.role in (UserRole.AUTHORITY, UserRole.ADMIN):
+        return True
+    result = await db.execute(
+        select(AuthorityUser.id).where(AuthorityUser.user_id == viewer.id).limit(1)
+    )
+    return result.scalar_one_or_none() is not None
+
+
 def _build_report_detail(
     report,
     record_submission=None,
+    *,
+    include_reporter_identity: bool = True,
+    include_rejection_warning: bool = False,
 ) -> ReportDetail:
     """Build a ReportDetail from a report model.
 
-    If ``record_submission`` is provided, its status and screenshot URLs are
-    embedded in the response so clients don't need a second roundtrip.
+    Args:
+        report: The SQLAlchemy Report model instance.
+        record_submission: Optional RECORD submission to embed.
+        include_reporter_identity: When False, the ``reporter`` field is
+            set to ``null`` and only ``reporter_display_name`` is
+            exposed. This is the anonymity safeguard for non-authority
+            callers.
+        include_rejection_warning: When True, populate
+            ``rejection_rate_warning`` from the reporter's counters.
+            Only authority viewers should see this.
     """
     record_submission_response = build_record_submission_response(record_submission)
     record_screenshots = (
         record_submission_response.screenshots if record_submission_response else []
+    )
+
+    reporter_obj = report.reporter
+    reporter_display = (
+        reporter_obj.display_name
+        or reporter_obj.username
+        or ""
+    ) if reporter_obj else None
+    reporter_public = (
+        _build_user_public(reporter_obj)
+        if include_reporter_identity and reporter_obj is not None
+        else None
+    )
+    rejection_warning = (
+        bool(getattr(reporter_obj, "rejection_rate_warning", False))
+        if include_rejection_warning and reporter_obj is not None
+        else False
     )
 
     return ReportDetail(
@@ -157,7 +211,9 @@ def _build_report_detail(
         infraction=_build_infraction_response(report.infraction),
         location=_build_location_schema(report),
         created_at=report.created_at,
-        reporter=_build_user_public(report.reporter),
+        reporter=reporter_public,
+        reporter_display_name=reporter_display,
+        rejection_rate_warning=rejection_warning,
         verifier=_build_user_public(report.verifier) if report.verifier else None,
         evidences=[_build_evidence_response(e) for e in report.evidences],
         verified_at=report.verified_at,
@@ -228,7 +284,14 @@ async def create_report(
             detail=str(e),
         )
 
-    return _build_report_detail(report)
+    # Self-view: the reporter always sees their own identity and their
+    # current abuse-warning flag so the client can surface the banner
+    # right after submission.
+    return _build_report_detail(
+        report,
+        include_reporter_identity=True,
+        include_rejection_warning=True,
+    )
 
 
 @router.get(
@@ -649,17 +712,27 @@ async def get_reports_geojson(
 async def get_report(
     report_id: str,
     db: DbSession,
+    viewer: OptionalUser,
 ) -> ReportDetail:
     """Get a report by ID or short ID.
 
-    This is a public endpoint that accepts both UUID and short ID formats.
+    This endpoint is public but applies reporter-anonymity rules:
+
+    * Authority / admin / authority-team members see the full reporter
+      profile plus the abuse-warning flag.
+    * The reporter themselves sees their own identity.
+    * All other viewers (anonymous or plain citizen) get a redacted
+      view where ``reporter`` is ``null`` and only the reporter's
+      ``display_name`` is exposed — this prevents a target of the
+      report (or their associates) from identifying who filed it.
 
     Args:
         report_id: The report's UUID or short ID (e.g., RPT-A1B2C3).
         db: Database session.
+        viewer: Optional authenticated user (controls redaction).
 
     Returns:
-        The detailed report information.
+        The detailed report information, redacted if appropriate.
 
     Raises:
         HTTPException: 404 if report is not found.
@@ -681,7 +754,13 @@ async def get_report(
         )
 
     submission = await _load_record_submission(db, report.id)
-    return _build_report_detail(report, record_submission=submission)
+    can_see_identity = await _viewer_can_see_reporter(viewer, report, db)
+    return _build_report_detail(
+        report,
+        record_submission=submission,
+        include_reporter_identity=can_see_identity,
+        include_rejection_warning=can_see_identity,
+    )
 
 
 @router.get(

@@ -222,7 +222,12 @@ async def approve_report(
     submission = await _load_record_submission(db, report.id)
     # RECORD must NOT re-trigger on authority approval; the unique
     # constraint on record_submission.report_id protects us anyway.
-    return _build_report_detail(report, record_submission=submission)
+    return _build_report_detail(
+        report,
+        record_submission=submission,
+        include_reporter_identity=True,
+        include_rejection_warning=True,
+    )
 
 
 @router.post(
@@ -262,6 +267,14 @@ async def authority_reject(
 
     await db.flush()
 
+    # Apply the false-report penalty: points debit + activity log +
+    # rejected_reports_count bump. Keep this inside the transaction so
+    # the reject status and the penalty are atomic.
+    from app.services.verification import VerificationService
+
+    verification_service = VerificationService(db)
+    await verification_service.apply_authority_rejection_penalty(report)
+
     logger.warning(
         "authority_review.reject report=%s authority_user=%s reason_len=%d",
         report.id,
@@ -270,4 +283,9 @@ async def authority_reject(
     )
 
     submission = await _load_record_submission(db, report.id)
-    return _build_report_detail(report, record_submission=submission)
+    return _build_report_detail(
+        report,
+        record_submission=submission,
+        include_reporter_identity=True,
+        include_rejection_warning=True,
+    )
