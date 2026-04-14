@@ -171,6 +171,13 @@ def _build_report_detail(
         rejection_reason=report.rejection_reason,
         record_submission=record_submission_response,
         record_screenshots=record_screenshots,
+        confidence_score=getattr(report, "confidence_score", 50) or 50,
+        confidence_factors=getattr(report, "confidence_factors", None),
+        authority_validator_id=getattr(report, "authority_validator_id", None),
+        authority_validated_at=getattr(report, "authority_validated_at", None),
+        authority_notes=getattr(report, "authority_notes", None),
+        verification_count=getattr(report, "verification_count", 0) or 0,
+        rejection_count=getattr(report, "rejection_count", 0) or 0,
     )
 
 

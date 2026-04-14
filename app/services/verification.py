@@ -32,6 +32,33 @@ REPORTER_MULTA_ON_VERIFY = Decimal("10.000000")
 REJECTION_POINTS = 2
 REJECTION_MULTA = Decimal("1.000000")
 
+# Community threshold: at least N votes and >= RATIO agreement.
+COMMUNITY_VOTE_MIN = 3
+COMMUNITY_VOTE_RATIO = 0.8
+
+
+def _community_threshold_reached(
+    verifications: int,
+    rejections: int,
+    *,
+    approve: bool,
+) -> bool:
+    """Return True when the community has reached consensus.
+
+    Args:
+        verifications: Total verification votes.
+        rejections: Total rejection votes.
+        approve: ``True`` to test for approval consensus, ``False`` for
+            rejection consensus.
+    """
+    total = verifications + rejections
+    if total == 0:
+        return False
+    target = verifications if approve else rejections
+    if target < COMMUNITY_VOTE_MIN:
+        return False
+    return (target / total) >= COMMUNITY_VOTE_RATIO
+
 
 class VerificationService:
     """Service for handling report verification operations.
@@ -53,51 +80,75 @@ class VerificationService:
         report_id: UUID,
         verifier_id: UUID,
     ) -> Report:
-        """Verify a report.
+        """Record a community verification vote for a report.
 
-        Steps:
-        1. Check report exists and is pending
-        2. Check verifier is not the reporter
-        3. Update report status to 'verified'
-        4. Set verifier_id and verified_at
-        5. Award points to verifier (5 points, 3 MULTA)
-        6. Award points to reporter (15 points, 10 MULTA)
-        7. Create Activity records for both users
-        8. Update both users' points
-        9. Check if either user leveled up
-        10. Check if either user earned a badge
+        A single vote does not immediately move the report to a verified
+        state. Instead it bumps ``verification_count`` and recomputes the
+        confidence score. Once the community threshold is reached (>= 3
+        votes with approval rate >= 80%), the report transitions to
+        ``COMMUNITY_VERIFIED`` and a RECORD submission is dispatched.
+
+        Authority validation for an official comparendo happens separately
+        in the authority review queue and is never triggered from here.
 
         Args:
             report_id: The UUID of the report to verify.
             verifier_id: The UUID of the user verifying the report.
 
         Returns:
-            The verified Report object.
+            The updated Report object.
 
         Raises:
-            ValueError: If report not found, not pending, or verifier is reporter.
+            ValueError: If report not found, already closed, or verifier is
+                the reporter.
         """
         # Get the report with relationships
         report = await self._get_report(report_id)
         if not report:
             raise ValueError("Report not found")
 
-        if report.status != ReportStatus.PENDING:
-            raise ValueError("Only pending reports can be verified")
+        # Only reports still accepting community input can be voted on.
+        if report.status not in (
+            ReportStatus.PENDING,
+            ReportStatus.AUTHORITY_REVIEW,
+        ):
+            raise ValueError(
+                "Only pending reports can be verified"
+            )
 
         if report.reporter_id == verifier_id:
             raise ValueError("You cannot verify your own report")
 
-        # Update report status
-        report.status = ReportStatus.VERIFIED
+        # Record the vote and recompute confidence.
+        report.verification_count = (report.verification_count or 0) + 1
         report.verifier_id = verifier_id
         report.verified_at = datetime.now(timezone.utc)
 
+        self._recompute_confidence(report)
+
+        threshold_reached = _community_threshold_reached(
+            verifications=report.verification_count,
+            rejections=report.rejection_count or 0,
+            approve=True,
+        )
+
+        record_dispatched = False
+        if threshold_reached and report.status != ReportStatus.COMMUNITY_VERIFIED:
+            report.status = ReportStatus.COMMUNITY_VERIFIED
+            logger.info(
+                "Report %s reached community verification threshold "
+                "(verifications=%s rejections=%s)",
+                report.id,
+                report.verification_count,
+                report.rejection_count,
+            )
+            record_dispatched = True
+
         await self.db.flush()
 
-        # Dispatch RECORD (Ministerio de Transporte) submission in the background.
-        # Celery task will read the report from the DB once the outer transaction commits.
-        if settings.RECORD_ENABLED:
+        # Dispatch RECORD submission only when the community verified
+        # threshold has just been reached.
+        if record_dispatched and settings.RECORD_ENABLED:
             try:
                 from app.integrations.record_task import submit_to_record
 
@@ -184,17 +235,37 @@ class VerificationService:
         if not report:
             raise ValueError("Report not found")
 
-        if report.status != ReportStatus.PENDING:
+        if report.status not in (
+            ReportStatus.PENDING,
+            ReportStatus.AUTHORITY_REVIEW,
+        ):
             raise ValueError("Only pending reports can be rejected")
 
         if report.reporter_id == verifier_id:
             raise ValueError("You cannot reject your own report")
 
-        # Update report status
-        report.status = ReportStatus.REJECTED
+        # Record the rejection vote and recompute confidence.
+        report.rejection_count = (report.rejection_count or 0) + 1
         report.verifier_id = verifier_id
         report.verified_at = datetime.now(timezone.utc)
         report.rejection_reason = reason.strip()
+
+        self._recompute_confidence(report)
+
+        # Community rejection consensus is a final state transition.
+        if _community_threshold_reached(
+            verifications=report.verification_count or 0,
+            rejections=report.rejection_count,
+            approve=False,
+        ):
+            report.status = ReportStatus.REJECTED
+            logger.info(
+                "Report %s reached community rejection threshold "
+                "(verifications=%s rejections=%s)",
+                report.id,
+                report.verification_count,
+                report.rejection_count,
+            )
 
         await self.db.flush()
 
@@ -222,6 +293,24 @@ class VerificationService:
 
         # Return updated report with relationships
         return await self._get_report(report_id)
+
+    def _recompute_confidence(self, report: Report) -> None:
+        """Recompute the confidence score for ``report`` in place.
+
+        Requires that ``report.evidences`` and ``report.reporter`` are
+        already loaded (``_get_report`` does this via selectinload).
+        """
+        from app.services.confidence_scorer import ConfidenceScorer
+
+        result = ConfidenceScorer.score(
+            report=report,
+            evidences=report.evidences or [],
+            reporter=report.reporter,
+            verification_count=report.verification_count or 0,
+            rejection_count=report.rejection_count or 0,
+        )
+        report.confidence_score = result.score
+        report.confidence_factors = result.factors
 
     async def _trigger_report_webhooks(
         self, report: Report, event_type: str

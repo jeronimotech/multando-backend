@@ -19,6 +19,74 @@ def _run_async(coro):
         loop.close()
 
 
+@celery_app.task(name="app.tasks.move_stale_pending_reports")
+def move_stale_pending_reports() -> dict:
+    """Move pending reports older than 2 days to the authority review queue.
+
+    Flow:
+        pending (>2 days) -> authority_review + dispatch RECORD submission
+
+    The authority review queue is the input for the comparendo workflow;
+    community verification continues in parallel and can still mark the
+    report as ``community_verified`` (which also dispatches RECORD).
+    """
+    return _run_async(_move_stale_pending_reports_async())
+
+
+async def _move_stale_pending_reports_async() -> dict:
+    """Async implementation of :func:`move_stale_pending_reports`."""
+    from datetime import datetime, timedelta, timezone
+
+    from sqlalchemy import select
+
+    from app.core.database import async_session_maker
+    from app.models import Report, ReportStatus
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=2)
+
+    moved_ids: list[str] = []
+
+    async with async_session_maker() as session:
+        stmt = (
+            select(Report)
+            .where(
+                Report.status == ReportStatus.PENDING,
+                Report.created_at < cutoff,
+            )
+            .limit(100)
+        )
+        result = await session.execute(stmt)
+        reports = list(result.scalars().all())
+
+        for report in reports:
+            report.status = ReportStatus.AUTHORITY_REVIEW
+            moved_ids.append(str(report.id))
+
+        if reports:
+            await session.commit()
+
+    # Dispatch RECORD submission for each stale report we just moved.
+    # The ``record_submission`` table has a unique constraint on
+    # ``report_id`` so this is safe to retry.
+    if moved_ids and settings.RECORD_ENABLED:
+        try:
+            from app.integrations.record_task import submit_to_record
+
+            for rid in moved_ids:
+                submit_to_record.delay(rid)
+        except Exception:
+            logger.warning(
+                "Failed to dispatch RECORD submission for stale reports",
+                exc_info=True,
+            )
+
+    logger.info(
+        "move_stale_pending_reports: moved %d reports to authority_review",
+        len(moved_ids),
+    )
+    return {"moved": len(moved_ids), "report_ids": moved_ids}
+
+
 @celery_app.task(name="app.tasks.cleanup_expired_conversations")
 def cleanup_expired_conversations() -> dict:
     """Clean up expired WhatsApp conversation contexts.

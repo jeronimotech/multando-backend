@@ -21,6 +21,7 @@ from app.api.v1.wallet import router as wallet_router
 from app.api.v1.api_keys import router as api_keys_router
 from app.api.v1.admin import router as admin_router
 from app.api.v1.authority_mgmt import router as authority_mgmt_router
+from app.api.v1.authority_review import router as authority_review_router
 from app.api.v1.webhooks import router as webhooks_router
 from app.api.v1.cities import router as cities_router
 from app.api.v1.conversations import router as conversations_router
@@ -58,6 +59,7 @@ router.include_router(cities_router)
 router.include_router(evidence_router)
 router.include_router(admin_router)
 router.include_router(authority_mgmt_router)
+router.include_router(authority_review_router)
 router.include_router(conversations_router)
 router.include_router(webhooks_router)
 router.include_router(whatsapp_router)

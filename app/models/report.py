@@ -158,12 +158,42 @@ class Report(TimestampMixin, Base):
     on_chain: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     tx_signature: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
+    # Confidence scoring (computed by ConfidenceScorer service)
+    confidence_score: Mapped[int] = mapped_column(
+        Integer, default=50, nullable=False
+    )
+    confidence_factors: Mapped[Optional[dict]] = mapped_column(
+        JSONB, nullable=True
+    )
+
+    # Community voting counters (used by verification flow)
+    verification_count: Mapped[int] = mapped_column(
+        Integer, default=0, nullable=False
+    )
+    rejection_count: Mapped[int] = mapped_column(
+        Integer, default=0, nullable=False
+    )
+
+    # Authority validation (for comparendo flow)
+    authority_validator_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    authority_validated_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    authority_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
     # Relationships
     reporter: Mapped["User"] = relationship(
         "User", back_populates="reports", foreign_keys=[reporter_id]
     )
     verifier: Mapped[Optional["User"]] = relationship(
         "User", back_populates="verified_reports", foreign_keys=[verifier_id]
+    )
+    authority_validator: Mapped[Optional["User"]] = relationship(
+        "User", foreign_keys=[authority_validator_id]
     )
     infraction: Mapped["Infraction"] = relationship(
         "Infraction", back_populates="reports"

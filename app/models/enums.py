@@ -12,10 +12,24 @@ class UserRole(str, Enum):
 
 
 class ReportStatus(str, Enum):
-    """Status of a traffic violation report."""
+    """Status of a traffic violation report.
+
+    Workflow:
+        pending -> community_verified (community threshold reached)
+                -> authority_review (after 2 days stale)
+        community_verified / authority_review -> approved (authority validated)
+                                              -> rejected (authority rejected)
+
+    Notes:
+        ``verified`` is kept for backward compatibility with legacy records
+        but is no longer set by new flows. ``disputed`` is also legacy.
+    """
 
     PENDING = "pending"
-    VERIFIED = "verified"
+    COMMUNITY_VERIFIED = "community_verified"
+    AUTHORITY_REVIEW = "authority_review"
+    APPROVED = "approved"
+    VERIFIED = "verified"  # legacy / backward-compat
     REJECTED = "rejected"
     DISPUTED = "disputed"
 

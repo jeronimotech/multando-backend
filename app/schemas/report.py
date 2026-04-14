@@ -18,10 +18,18 @@ from app.schemas.vehicle_type import VehicleTypeResponse
 
 
 class ReportStatus(str, Enum):
-    """Report status types."""
+    """Report status types.
+
+    New values (``community_verified``, ``authority_review``, ``approved``)
+    drive the authority validation workflow. ``verified`` is kept for
+    backward compatibility with legacy data.
+    """
 
     PENDING = "pending"
-    VERIFIED = "verified"
+    COMMUNITY_VERIFIED = "community_verified"
+    AUTHORITY_REVIEW = "authority_review"
+    APPROVED = "approved"
+    VERIFIED = "verified"  # legacy
     REJECTED = "rejected"
     DISPUTED = "disputed"
 
@@ -182,6 +190,43 @@ class ReportDetail(ReportSummary):
     record_screenshots: list[str] = Field(
         default_factory=list,
         description="URLs of screenshots captured during the RECORD submission",
+    )
+
+    # Confidence scoring
+    confidence_score: int = Field(
+        default=50,
+        ge=0,
+        le=100,
+        description="Composite confidence score in [0, 100].",
+    )
+    confidence_factors: dict | None = Field(
+        default=None,
+        description=(
+            "Breakdown of factors contributing to the confidence score, "
+            "as a mapping of factor name to signed integer points."
+        ),
+    )
+
+    # Authority validation (comparendo flow)
+    authority_validator_id: UUID | None = Field(
+        default=None,
+        description="User ID of the authority that validated this report.",
+    )
+    authority_validated_at: datetime | None = Field(
+        default=None,
+        description="Timestamp of the authority validation decision.",
+    )
+    authority_notes: str | None = Field(
+        default=None,
+        description="Free-text notes left by the validating authority.",
+    )
+
+    # Community voting counters
+    verification_count: int = Field(
+        default=0, description="Number of community verification votes."
+    )
+    rejection_count: int = Field(
+        default=0, description="Number of community rejection votes."
     )
 
 

@@ -42,5 +42,9 @@ celery_app.conf.update(
             "task": "app.integrations.record_task.process_pending_record_submissions",
             "schedule": 300.0,  # Every 5 minutes
         },
+        "move-stale-pending": {
+            "task": "app.tasks.move_stale_pending_reports",
+            "schedule": 3600.0,  # Every hour
+        },
     },
 )

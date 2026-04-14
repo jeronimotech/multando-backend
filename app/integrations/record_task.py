@@ -224,12 +224,21 @@ def process_pending_record_submissions() -> dict:
         from app.models.report import Report
 
         async with async_session_factory() as session:
-            # Find verified reports without a submission record
+            # Find reports eligible for RECORD submission that don't yet
+            # have a submission record. Eligible statuses:
+            #   - community_verified (community threshold reached)
+            #   - authority_review  (stale pending > 2 days)
+            #   - verified          (legacy, kept for backward compat)
             subquery = select(RecordSubmission.report_id)
+            eligible_statuses = [
+                ReportStatus.COMMUNITY_VERIFIED,
+                ReportStatus.AUTHORITY_REVIEW,
+                ReportStatus.VERIFIED,
+            ]
             missing_stmt = (
                 select(Report.id)
                 .where(
-                    Report.status == ReportStatus.VERIFIED,
+                    Report.status.in_(eligible_statuses),
                     ~Report.id.in_(subquery),
                 )
                 .limit(20)
