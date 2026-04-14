@@ -105,6 +105,13 @@ async def reports_map_widget(
     locale: str = Query(default="es", pattern=r"^(es|en)$", description="UI locale"),
     limit: int = Query(default=500, ge=1, le=5000, description="Max markers to load"),
     cluster: bool = Query(default=True, description="Cluster markers at low zoom"),
+    use_icons: bool = Query(
+        default=False,
+        description=(
+            "If true, map markers use infraction-category icons (🚗 🚦 🅿️ ⚡) "
+            "instead of plain status dots. Still tinted by status color."
+        ),
+    ),
     tabs: str = Query(
         default="map",
         description=(
@@ -179,6 +186,7 @@ async def reports_map_widget(
 
     legend_display = "block" if show_legend else "none"
     cluster_js = "true" if cluster else "false"
+    use_icons_js = "true" if use_icons else "false"
 
     # Build the tab bar HTML only when more than one tab is requested.
     if show_tab_bar:
@@ -608,7 +616,27 @@ async def reports_map_widget(
           : L.layerGroup();
         layer.addTo(mapInstance);
 
-        var makeIcon = function (color) {{
+        var USE_ICONS = {use_icons_js};
+
+        var makeIcon = function (color, category) {{
+          if (USE_ICONS) {{
+            // Multando hand-shaped pin (matches landing map)
+            var svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 80" width="40" height="50">' +
+                      '<path d="M16 28 Q16 12 22 12 Q26 12 26 22 L26 28 Q26 12 30 12 Q34 12 34 22 L34 28 Q34 8 38 8 Q42 8 42 22 L42 28 Q42 14 46 14 Q50 14 50 26 L50 44 Q50 60 32 64 Q14 60 14 44 L14 32 Q14 26 16 28 Z" ' +
+                      'fill="white" stroke="' + color + '" stroke-width="2.5"/>' +
+                      '<circle cx="32" cy="42" r="11" fill="' + color + '" opacity="0.95"/>' +
+                      '<circle cx="32" cy="42" r="8" fill="#1a1a2e"/>' +
+                      '<circle cx="32" cy="42" r="5" fill="' + color + '" opacity="0.6"/>' +
+                      '<circle cx="29" cy="39" r="2" fill="white" opacity="0.9"/>' +
+                      '</svg>';
+            return L.divIcon({{
+              className: 'multando-hand-pin',
+              html: svg,
+              iconSize: [40, 50],
+              iconAnchor: [20, 50],
+              popupAnchor: [0, -45]
+            }});
+          }}
           return L.divIcon({{
             className: 'multando-pin',
             html: '<div style="width:14px;height:14px;border-radius:50%;background:' + color +
@@ -642,7 +670,7 @@ async def reports_map_widget(
               var coords = f.geometry.coordinates;
               var props = f.properties || {{}};
               var color = STATUS_COLORS[props.status] || '#64748b';
-              var marker = L.marker([coords[1], coords[0]], {{ icon: makeIcon(color) }});
+              var marker = L.marker([coords[1], coords[0]], {{ icon: makeIcon(color, props.infraction_category) }});
               marker.bindPopup(popupFor(props));
               layer.addLayer(marker);
             }});
