@@ -362,6 +362,36 @@ async def reports_map_widget(
     .dot-review {{ background: #f59e0b; }}
     .dot-pending {{ background: #94a3b8; }}
     .dot-rejected {{ background: #ef4444; }}
+    /* Cluster markers — matches Multando landing style */
+    .multando-cluster-wrap {{
+      background: transparent !important;
+      border: none !important;
+    }}
+    .multando-cluster {{
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      font-weight: 600;
+      color: white;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+      transition: transform 0.2s ease;
+      width: 100%;
+      height: 100%;
+    }}
+    .multando-cluster:hover {{ transform: scale(1.1); }}
+    .multando-cluster span {{ font-size: 12px; }}
+    .multando-cluster-small {{
+      background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+    }}
+    .multando-cluster-medium {{
+      background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+    }}
+    .multando-cluster-medium span {{ font-size: 13px; }}
+    .multando-cluster-large {{
+      background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+    }}
+    .multando-cluster-large span {{ font-size: 14px; }}
     #status {{
       position: absolute;
       top: 12px;
@@ -611,8 +641,28 @@ async def reports_map_widget(
         }}).addTo(mapInstance);
 
         var useCluster = {cluster_js};
+
+        var clusterIcon = function (cluster) {{
+          var count = cluster.getChildCount();
+          var size = 'small';
+          var diameter = 30;
+          if (count >= 100) {{ size = 'large'; diameter = 50; }}
+          else if (count >= 10) {{ size = 'medium'; diameter = 40; }}
+          return L.divIcon({{
+            html: '<div class="multando-cluster multando-cluster-' + size + '"><span>' + count + '</span></div>',
+            className: 'multando-cluster-wrap',
+            iconSize: L.point(diameter, diameter, true)
+          }});
+        }};
+
         var layer = useCluster && L.markerClusterGroup
-          ? L.markerClusterGroup({{ showCoverageOnHover: false }})
+          ? L.markerClusterGroup({{
+              showCoverageOnHover: false,
+              spiderfyOnMaxZoom: true,
+              zoomToBoundsOnClick: true,
+              maxClusterRadius: 50,
+              iconCreateFunction: clusterIcon
+            }})
           : L.layerGroup();
         layer.addTo(mapInstance);
 
