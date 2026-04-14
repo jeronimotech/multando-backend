@@ -369,37 +369,47 @@ async def reports_map_widget(
     }}
     #footer {{
       position: absolute;
-      bottom: 4px;
+      bottom: 8px;
       left: 8px;
       z-index: 1001;
       display: flex;
       align-items: center;
-      gap: 6px;
-      font-size: 11px;
-      color: #666;
-      background: rgba(255, 255, 255, 0.92);
-      padding: 4px 10px 4px 6px;
-      border-radius: 20px;
-      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+      gap: 8px;
+      font-size: 12px;
+      color: #111827;
+      background: rgba(255, 255, 255, 0.95);
+      padding: 4px 12px 4px 4px;
+      border-radius: 24px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
       text-decoration: none;
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
     }}
     #footer:hover {{
-      background: rgba(255, 255, 255, 1);
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
     }}
-    #footer img {{
-      width: 20px;
-      height: 20px;
+    #footer .logo-wrap {{
+      width: 28px;
+      height: 28px;
+      background: #1A1A2E;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }}
+    #footer .logo-wrap img {{
+      width: 22px;
+      height: 22px;
       display: block;
-      border-radius: 4px;
     }}
     #footer .brand {{
-      color: #1A1A2E;
+      color: #E63946;
       font-weight: 700;
-      letter-spacing: -0.02em;
+      letter-spacing: -0.01em;
     }}
     #footer .powered {{
-      color: #888;
+      color: #6b7280;
       font-weight: 400;
     }}
     .popup-title {{
@@ -520,7 +530,7 @@ async def reports_map_widget(
     {map_panel_html}
     {leaderboard_panel_html}
     <a id="footer" href="https://multando.com" target="_blank" rel="noopener">
-      <img src="{base_url}/static/logo.png" alt="Multando" />
+      <span class="logo-wrap"><img src="{base_url}/static/logo.png" alt="Multando" /></span>
       <span class="powered">{strings["powered_by"]}</span>
       <span class="brand">Multando</span>
     </a>
