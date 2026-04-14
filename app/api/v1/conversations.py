@@ -309,6 +309,7 @@ async def send_message(
             created_at=ai_msg_data["created_at"],
         ),
         tool_calls=ai_result.get("tool_calls", []),
+        quick_replies=ai_result.get("quick_replies", []),
     )
 
 

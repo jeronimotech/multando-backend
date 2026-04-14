@@ -532,9 +532,7 @@ async def process_message(
                     send_reply_block.input.get("quick_replies")
                 )
                 if not msg_text:
-                    msg_text = (
-                        "Listo. / Done."
-                    )
+                    msg_text = "Listo. / Done."
                 assistant_msg = await _save_assistant_message(
                     conversation_id, msg_text, db
                 )
