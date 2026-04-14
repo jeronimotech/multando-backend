@@ -5,14 +5,14 @@ Adds ``community_verified``, ``authority_review`` and ``approved`` to the
 ``rejected``, ``disputed``) are preserved. ``verified`` remains in the enum
 for legacy/backward-compat but new flows should no longer set it.
 
-Revision ID: 008_add_report_statuses
+Revision ID: 008_statuses
 Revises: 007_add_evidence_capture_columns
 """
 
 from alembic import op
 
-revision = "008_add_report_statuses"
-down_revision = "007_add_evidence_capture_columns"
+revision = "008_statuses"
+down_revision = "007b_fix_alembic"
 branch_labels = None
 depends_on = None
 

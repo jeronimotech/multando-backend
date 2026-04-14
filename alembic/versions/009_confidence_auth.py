@@ -9,84 +9,49 @@ Adds:
     - authority_validated_at (timestamptz)
     - authority_notes (text)
 
-Revision ID: 009_add_confidence_and_authority_fields
-Revises: 008_add_report_statuses
+Revision ID: 009_confidence_auth
+Revises: 008_statuses
 """
 
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 
-revision = "009_add_confidence_and_authority_fields"
-down_revision = "008_add_report_statuses"
+revision = "009_confidence_auth"
+down_revision = "008_statuses"
 branch_labels = None
 depends_on = None
 
 
 def upgrade() -> None:
-    # Confidence scoring
-    op.add_column(
-        "reports",
-        sa.Column(
-            "confidence_score",
-            sa.Integer(),
-            nullable=False,
-            server_default="50",
-        ),
+    # Use raw SQL with IF NOT EXISTS for idempotency — previous runs
+    # may have added some columns before failing on the alembic_version
+    # column size.
+    op.execute(
+        "ALTER TABLE reports ADD COLUMN IF NOT EXISTS confidence_score INTEGER NOT NULL DEFAULT 50"
     )
-    op.add_column(
-        "reports",
-        sa.Column("confidence_factors", JSONB, nullable=True),
+    op.execute(
+        "ALTER TABLE reports ADD COLUMN IF NOT EXISTS confidence_factors JSONB"
     )
-
-    # Community voting counters
-    op.add_column(
-        "reports",
-        sa.Column(
-            "verification_count",
-            sa.Integer(),
-            nullable=False,
-            server_default="0",
-        ),
+    op.execute(
+        "ALTER TABLE reports ADD COLUMN IF NOT EXISTS verification_count INTEGER NOT NULL DEFAULT 0"
     )
-    op.add_column(
-        "reports",
-        sa.Column(
-            "rejection_count",
-            sa.Integer(),
-            nullable=False,
-            server_default="0",
-        ),
+    op.execute(
+        "ALTER TABLE reports ADD COLUMN IF NOT EXISTS rejection_count INTEGER NOT NULL DEFAULT 0"
+    )
+    op.execute(
+        "ALTER TABLE reports ADD COLUMN IF NOT EXISTS authority_validator_id UUID REFERENCES users(id) ON DELETE SET NULL"
+    )
+    op.execute(
+        "ALTER TABLE reports ADD COLUMN IF NOT EXISTS authority_validated_at TIMESTAMPTZ"
+    )
+    op.execute(
+        "ALTER TABLE reports ADD COLUMN IF NOT EXISTS authority_notes TEXT"
     )
 
-    # Authority validation fields
-    op.add_column(
-        "reports",
-        sa.Column(
-            "authority_validator_id",
-            UUID(as_uuid=True),
-            sa.ForeignKey("users.id", ondelete="SET NULL"),
-            nullable=True,
-        ),
-    )
-    op.add_column(
-        "reports",
-        sa.Column(
-            "authority_validated_at",
-            sa.DateTime(timezone=True),
-            nullable=True,
-        ),
-    )
-    op.add_column(
-        "reports",
-        sa.Column("authority_notes", sa.Text(), nullable=True),
-    )
-
-    # Helpful index for queue lookups ordered by confidence desc
-    op.create_index(
-        "ix_reports_status_confidence",
-        "reports",
-        ["status", "confidence_score"],
+    # Index (safe with IF NOT EXISTS)
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_reports_status_confidence ON reports (status, confidence_score)"
     )
 
     # Backfill confidence_score for existing reports using a lightweight
