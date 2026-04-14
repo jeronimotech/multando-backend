@@ -8,12 +8,18 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, status
 
+from sqlalchemy import select
+
 from app.api.deps import CurrentUser, DbSession
 from app.core.config import settings
-from app.models import ReportStatus
+from app.models import RecordSubmission, ReportStatus
 from app.schemas.common import MessageResponse
 from app.schemas.evidence import EvidenceResponse, EvidenceType
 from app.schemas.infraction import InfractionResponse
+from app.schemas.record_submission import (
+    RecordSubmissionResponse,
+    build_record_submission_response,
+)
 from app.schemas.report import (
     LocationSchema,
     ReportCreate,
@@ -126,8 +132,20 @@ def _build_report_summary(report) -> ReportSummary:
     )
 
 
-def _build_report_detail(report) -> ReportDetail:
-    """Build a ReportDetail from a report model."""
+def _build_report_detail(
+    report,
+    record_submission=None,
+) -> ReportDetail:
+    """Build a ReportDetail from a report model.
+
+    If ``record_submission`` is provided, its status and screenshot URLs are
+    embedded in the response so clients don't need a second roundtrip.
+    """
+    record_submission_response = build_record_submission_response(record_submission)
+    record_screenshots = (
+        record_submission_response.screenshots if record_submission_response else []
+    )
+
     return ReportDetail(
         id=report.id,
         short_id=report.short_id,
@@ -151,7 +169,17 @@ def _build_report_detail(report) -> ReportDetail:
         if hasattr(report.source, "value")
         else SchemaReportSource(report.source),
         rejection_reason=report.rejection_reason,
+        record_submission=record_submission_response,
+        record_screenshots=record_screenshots,
     )
+
+
+async def _load_record_submission(db, report_id) -> RecordSubmission | None:
+    """Fetch the RecordSubmission for a report, if any."""
+    result = await db.execute(
+        select(RecordSubmission).where(RecordSubmission.report_id == report_id)
+    )
+    return result.scalar_one_or_none()
 
 
 @router.post(
@@ -428,7 +456,53 @@ async def get_report(
             detail="Report not found",
         )
 
-    return _build_report_detail(report)
+    submission = await _load_record_submission(db, report.id)
+    return _build_report_detail(report, record_submission=submission)
+
+
+@router.get(
+    "/{report_id}/record-submission",
+    response_model=RecordSubmissionResponse,
+    summary="Get RECORD submission status for a report",
+    description=(
+        "Returns the current RECORD (Ministerio de Transporte) submission "
+        "record for a given report, including status, attempts, and any "
+        "screenshots captured during submission."
+    ),
+)
+async def get_report_record_submission(
+    report_id: str,
+    db: DbSession,
+) -> RecordSubmissionResponse:
+    """Return the RecordSubmission linked to the report.
+
+    Anyone who can see the report can see its RECORD submission status.
+    """
+    report_service = ReportService(db)
+
+    # Resolve by UUID or short_id, matching the get_report endpoint.
+    try:
+        uuid_id = UUID(report_id)
+        report = await report_service.get_by_id(uuid_id)
+    except ValueError:
+        report = await report_service.get_by_short_id(report_id)
+
+    if not report:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Report not found",
+        )
+
+    submission = await _load_record_submission(db, report.id)
+    if submission is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No RECORD submission exists for this report",
+        )
+
+    response = build_record_submission_response(submission)
+    assert response is not None  # submission is not None here
+    return response
 
 
 @router.post(

@@ -11,6 +11,7 @@ from app.api.v1.authorities import router as authorities_router
 from app.api.v1.blockchain import router as blockchain_router
 from app.api.v1.gamification import router as gamification_router
 from app.api.v1.infractions import router as infractions_router
+from app.api.v1.leaderboard import router as leaderboard_router
 from app.api.v1.reports import router as reports_router
 from app.api.v1.users import router as users_router
 from app.api.v1.vehicle_types import router as vehicle_types_router
@@ -60,3 +61,4 @@ router.include_router(authority_mgmt_router)
 router.include_router(conversations_router)
 router.include_router(webhooks_router)
 router.include_router(whatsapp_router)
+router.include_router(leaderboard_router)

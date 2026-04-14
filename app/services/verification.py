@@ -1,5 +1,6 @@
 """Verification service for managing report verification workflow."""
 
+import logging
 from datetime import datetime, timezone
 from decimal import Decimal
 from uuid import UUID
@@ -8,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.config import settings
 from app.models import (
     Activity,
     ActivityType,
@@ -18,6 +20,8 @@ from app.models import (
     User,
     UserBadge,
 )
+
+logger = logging.getLogger(__name__)
 
 
 # Point rewards for verification actions
@@ -90,6 +94,20 @@ class VerificationService:
         report.verified_at = datetime.now(timezone.utc)
 
         await self.db.flush()
+
+        # Dispatch RECORD (Ministerio de Transporte) submission in the background.
+        # Celery task will read the report from the DB once the outer transaction commits.
+        if settings.RECORD_ENABLED:
+            try:
+                from app.integrations.record_task import submit_to_record
+
+                submit_to_record.delay(str(report.id))
+            except Exception:
+                logger.warning(
+                    "Failed to dispatch RECORD submission for report %s",
+                    report.id,
+                    exc_info=True,
+                )
 
         # Award points to verifier
         await self._award_points(

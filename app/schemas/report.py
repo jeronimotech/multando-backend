@@ -12,6 +12,7 @@ from pydantic import Field, field_validator, model_validator
 from app.schemas.base import BaseSchema
 from app.schemas.evidence import EvidenceResponse
 from app.schemas.infraction import InfractionResponse
+from app.schemas.record_submission import RecordSubmissionResponse
 from app.schemas.user import UserPublic
 from app.schemas.vehicle_type import VehicleTypeResponse
 
@@ -173,6 +174,14 @@ class ReportDetail(ReportSummary):
     source: ReportSource = Field(description="Source of the report")
     rejection_reason: str | None = Field(
         default=None, description="Reason if report was rejected"
+    )
+    record_submission: RecordSubmissionResponse | None = Field(
+        default=None,
+        description="Status of the submission to the government RECORD system",
+    )
+    record_screenshots: list[str] = Field(
+        default_factory=list,
+        description="URLs of screenshots captured during the RECORD submission",
     )
 
 
