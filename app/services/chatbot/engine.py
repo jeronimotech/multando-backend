@@ -73,18 +73,21 @@ def _extract_quick_replies(text: str) -> tuple[list[dict], str]:
     if not replies and clean.endswith("?"):
         tail = clean[-240:].lower()
         confirm_cues_es = [
-            "confirmas", "esta correcto", "está correcto", "es correcto",
-            "todo bien", "todo esta bien", "todo está bien",
-            "procedo", "lo creamos", "lo envio", "lo envío",
-            "continuamos", "estas de acuerdo", "estás de acuerdo",
-            "quieres enviar", "deseas enviar", "todo esta listo",
-            "todo está listo", "enviamos el reporte",
+            "confirmas", "confirmar", "correcto", "correcta",
+            "correctos", "correctas", "todo bien",
+            "procedo", "procedemos", "creamos", "lo creo",
+            "lo envio", "lo envío", "enviar el reporte",
+            "continuamos", "de acuerdo",
+            "quieres enviar", "deseas enviar",
+            "quieres crear", "deseas crear", "crear el reporte",
+            "listo para", "todo listo",
         ]
         confirm_cues_en = [
-            "confirm", "is this correct", "is that correct",
-            "does this look right", "shall i create",
-            "should i create", "ready to submit", "everything correct",
-            "all correct", "proceed",
+            "confirm", "correct", "does this look right",
+            "shall i create", "should i create",
+            "ready to submit", "ready to create",
+            "want to create", "want to submit", "proceed",
+            "sound good", "everything right",
         ]
         lang_es = any(cue in tail for cue in confirm_cues_es)
         lang_en = any(cue in tail for cue in confirm_cues_en)
