@@ -441,11 +441,12 @@ async def get_reports_geojson(
     db: DbSession,
     city_id: int | None = Query(default=None, description="Filter by city ID"),
     status_filter: str = Query(
-        default="approved,community_verified",
+        default="pending,community_verified,authority_review,approved",
         alias="status",
         description=(
-            "Comma-separated list of statuses to include. Authorities typically "
-            "care about ``approved,community_verified``."
+            "Comma-separated list of statuses to include. Default excludes "
+            "only rejected reports. For trusted data only, filter to "
+            "``approved,community_verified``."
         ),
     ),
     since: datetime | None = Query(

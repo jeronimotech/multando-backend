@@ -88,9 +88,9 @@ async def reports_map_widget(
     request: Request,
     city_id: int | None = Query(default=None, description="Filter by city ID"),
     status_filter: str = Query(
-        default="approved,community_verified",
+        default="pending,community_verified,authority_review,approved",
         alias="status",
-        description="Comma-separated statuses to include.",
+        description="Comma-separated statuses to include (default excludes rejected).",
     ),
     primary_color: str = Query(
         default="e63946",

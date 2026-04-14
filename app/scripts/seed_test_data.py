@@ -368,12 +368,14 @@ async def seed_reports(
 
     now = datetime.now(timezone.utc)
 
-    # Status distribution: 15 pending, 25 verified, 7 rejected, 3 disputed
+    # Status distribution — includes new statuses so widget/leaderboard
+    # filters (approved, community_verified) show real data.
     statuses: list[ReportStatus] = (
-        [ReportStatus.PENDING] * 15
-        + [ReportStatus.VERIFIED] * 25
-        + [ReportStatus.REJECTED] * 7
-        + [ReportStatus.DISPUTED] * 3
+        [ReportStatus.PENDING] * 10
+        + [ReportStatus.COMMUNITY_VERIFIED] * 12
+        + [ReportStatus.AUTHORITY_REVIEW] * 5
+        + [ReportStatus.APPROVED] * 18
+        + [ReportStatus.REJECTED] * 5
     )
     random.shuffle(statuses)
 
@@ -438,8 +440,8 @@ async def seed_reports(
             updated_at=created_at,
         )
 
-        # Verified / rejected / disputed get a verifier and timestamp
-        if status in (ReportStatus.VERIFIED, ReportStatus.REJECTED, ReportStatus.DISPUTED):
+        # Approved / rejected get a verifier and timestamp
+        if status in (ReportStatus.APPROVED, ReportStatus.COMMUNITY_VERIFIED, ReportStatus.REJECTED):
             verifier = random.choice(authority_analysts)
             report.verifier_id = verifier.id
             report.verified_at = created_at + timedelta(
@@ -517,7 +519,7 @@ async def seed_activities_and_tokens(
         session.add(submit_activity)
         activities_created += 1
 
-        if report.status == ReportStatus.VERIFIED:
+        if report.status == ReportStatus.APPROVED:
             # REPORT_VERIFIED activity with rewards
             reward = infraction.multa_reward
             points = infraction.points_reward
@@ -782,7 +784,7 @@ async def seed_test_data() -> None:
 
             # Print summary
             verified_count = sum(
-                1 for r in reports if r.status == ReportStatus.VERIFIED
+                1 for r in reports if r.status == ReportStatus.APPROVED
             )
             pending_count = sum(
                 1 for r in reports if r.status == ReportStatus.PENDING
