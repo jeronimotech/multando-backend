@@ -102,7 +102,16 @@ async def reports_map_widget(
     zoom: int = Query(default=12, ge=1, le=20, description="Initial zoom level"),
     height: int = Query(default=500, ge=100, le=4000, description="Widget height in pixels"),
     show_legend: bool = Query(default=True, description="Show the status legend"),
-    locale: str = Query(default="es", pattern=r"^(es|en)$", description="UI locale"),
+    locale: str = Query(
+        default="es",
+        pattern=r"^(es|en)$",
+        description="UI locale (accepts also `lang` alias).",
+    ),
+    lang: str | None = Query(
+        default=None,
+        pattern=r"^(es|en)$",
+        description="Alias for `locale` (convenience parameter).",
+    ),
     limit: int = Query(default=500, ge=1, le=5000, description="Max markers to load"),
     cluster: bool = Query(default=True, description="Cluster markers at low zoom"),
     use_icons: bool = Query(
@@ -152,7 +161,10 @@ async def reports_map_widget(
         An ``HTMLResponse`` with permissive framing headers so the page can
         be embedded from any origin.
     """
-    strings = _LOCALE_STRINGS.get(locale, _LOCALE_STRINGS["es"])
+    # `lang` takes precedence over `locale` when provided.
+    resolved_locale = lang or locale
+    strings = _LOCALE_STRINGS.get(resolved_locale, _LOCALE_STRINGS["es"])
+    locale = resolved_locale  # keep the rest of the code using `locale`
     tab_list = _parse_tabs(tabs)
     if default_tab not in tab_list:
         default_tab = tab_list[0]
@@ -187,6 +199,13 @@ async def reports_map_widget(
     legend_display = "block" if show_legend else "none"
     cluster_js = "true" if cluster else "false"
     use_icons_js = "true" if use_icons else "false"
+
+    # Compute a darker shade of the primary color (~20% darker) for gradients.
+    try:
+        r, g, b = (int(primary_color[i:i+2], 16) for i in (0, 2, 4))
+        primary_dark = "".join(f"{max(0, int(c * 0.78)):02x}" for c in (r, g, b))
+    except Exception:
+        primary_dark = primary_color
 
     # Build the tab bar HTML only when more than one tab is requested.
     if show_tab_bar:
@@ -259,6 +278,7 @@ async def reports_map_widget(
   <style>
     :root {{
       --primary: #{primary_color};
+      --primary-dark: #{primary_dark};
     }}
     html, body {{
       margin: 0;
@@ -362,7 +382,7 @@ async def reports_map_widget(
     .dot-review {{ background: #f59e0b; }}
     .dot-pending {{ background: #94a3b8; }}
     .dot-rejected {{ background: #ef4444; }}
-    /* Cluster markers — matches Multando landing style */
+    /* Cluster markers — tinted with primary color, size-tiered opacity */
     .multando-cluster-wrap {{
       background: transparent !important;
       border: none !important;
@@ -372,25 +392,21 @@ async def reports_map_widget(
       align-items: center;
       justify-content: center;
       border-radius: 50%;
-      font-weight: 600;
+      font-weight: 700;
       color: white;
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
       transition: transform 0.2s ease;
       width: 100%;
       height: 100%;
+      background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+      border: 2px solid rgba(255, 255, 255, 0.9);
     }}
     .multando-cluster:hover {{ transform: scale(1.1); }}
     .multando-cluster span {{ font-size: 12px; }}
-    .multando-cluster-small {{
-      background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-    }}
-    .multando-cluster-medium {{
-      background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-    }}
+    .multando-cluster-small {{ opacity: 0.85; }}
+    .multando-cluster-medium {{ opacity: 0.92; }}
     .multando-cluster-medium span {{ font-size: 13px; }}
-    .multando-cluster-large {{
-      background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-    }}
+    .multando-cluster-large {{ opacity: 1; }}
     .multando-cluster-large span {{ font-size: 14px; }}
     #status {{
       position: absolute;
