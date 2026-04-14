@@ -73,9 +73,14 @@ class PlateLocation(BaseModel):
 
 
 class PublicLeaderboardEntry(BaseModel):
-    """Public-facing leaderboard row with masked plate."""
+    """Public-facing leaderboard row.
 
-    plate_masked: str = Field(description="Masked plate: first 3 chars + bullets")
+    Plate numbers are public (already in government records) but we do NOT
+    expose exact GPS coordinates or addresses to prevent correlating a
+    specific plate with a specific location.
+    """
+
+    plate: str = Field(description="Full vehicle plate")
     verified_reports: int = Field(description="Number of verified reports for this plate")
     last_reported_at: datetime | None = Field(
         default=None, description="Most recent report timestamp"
@@ -311,7 +316,7 @@ async def get_public_leaderboard(
         cities = await _cities_for_plate(db, plate, city_id=city_id, cutoff=cutoff)
         entries.append(
             PublicLeaderboardEntry(
-                plate_masked=_mask_plate(plate),
+                plate=plate,
                 verified_reports=row["verified_reports"],
                 last_reported_at=row["last_reported_at"],
                 top_infraction=top_infraction,

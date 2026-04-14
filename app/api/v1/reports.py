@@ -307,9 +307,11 @@ async def get_report_markers(
             "latitude": r.latitude,
             "longitude": r.longitude,
             "infraction": infraction.name_en if infraction else "",
-            "vehiclePlate": r.vehicle_plate or "",
+            "infractionEs": infraction.name_es if infraction else "",
             "status": r.status.value if hasattr(r.status, 'value') else r.status,
             "createdAt": r.created_at.isoformat() if r.created_at else "",
+            # vehiclePlate intentionally omitted on public markers to prevent
+            # correlating specific plates with specific locations.
         })
     return markers
 
