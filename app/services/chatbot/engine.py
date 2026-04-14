@@ -7,6 +7,7 @@ and image analysis, using existing Multando services for data operations.
 import base64
 import json
 import logging
+import re
 from datetime import datetime, timezone
 from uuid import UUID
 
@@ -45,6 +46,25 @@ logger = logging.getLogger(__name__)
 
 MODEL = settings.ANTHROPIC_MODEL
 MAX_TOOL_ROUNDS = 5  # Prevent infinite tool-call loops
+
+# Pattern to extract quick reply buttons: [[Label]] or [[Label|value]]
+_QUICK_REPLY_RE = re.compile(r"\[\[([^\]|]+?)(?:\|([^\]]+?))?\]\]")
+
+
+def _extract_quick_replies(text: str) -> tuple[list[dict], str]:
+    """Parse [[Label]] or [[Label|value]] markers from text.
+
+    Returns (quick_replies, cleaned_text).
+    """
+    replies = []
+    for match in _QUICK_REPLY_RE.finditer(text):
+        label = match.group(1).strip()
+        value = (match.group(2) or label).strip()
+        replies.append({"label": label, "value": value})
+    clean = _QUICK_REPLY_RE.sub("", text).strip()
+    # Collapse multiple blank lines
+    clean = re.sub(r"\n{3,}", "\n\n", clean)
+    return replies, clean
 
 
 def _detect_media_type(b64_data: str, fallback: str = "image/jpeg") -> str:
@@ -129,6 +149,7 @@ async def _execute_tool(
     user_id: UUID,
     db: AsyncSession,
     image_context: dict | None = None,
+    report_source: str = "mobile",
 ) -> str:
     """Execute a tool call and return the result as a JSON string.
 
@@ -190,7 +211,7 @@ async def _execute_tool(
                 vehicle_plate=tool_input.get("plate_number"),
                 vehicle_type_id=tool_input.get("vehicle_type_id"),
                 vehicle_category=VehicleCategory.PRIVATE,
-                source=ReportSource.WHATSAPP,
+                source=ReportSource(report_source) if report_source in [s.value for s in ReportSource] else ReportSource.MOBILE,
                 location=LocationSchema(
                     lat=tool_input["latitude"],
                     lon=tool_input["longitude"],
@@ -383,6 +404,7 @@ async def process_message(
     image_base64: str | None = None,
     image_media_type: str = "image/jpeg",
     evidence_metadata: dict | None = None,
+    report_source: str = "mobile",
     db: AsyncSession | None = None,
 ) -> dict:
     """Process a user message through the Claude AI engine.
@@ -481,6 +503,7 @@ async def process_message(
             return {
                 "message": _message_to_dict(assistant_msg),
                 "tool_calls": [],
+                "quick_replies": [],
             }
 
         # Check if Claude wants to use tools
@@ -502,6 +525,7 @@ async def process_message(
                     result_str = await _execute_tool(
                         block.name, block.input, user_id, db,
                         image_context=image_context,
+                        report_source=report_source,
                     )
                     tool_results.append({
                         "type": "tool_result",
@@ -519,14 +543,18 @@ async def process_message(
                 if hasattr(block, "text"):
                     assistant_text += block.text
 
-            # Save the assistant message to DB
+            # Extract quick reply buttons from markers like [[Yes|Si]]
+            quick_replies, clean_text = _extract_quick_replies(assistant_text)
+
+            # Save the clean message (without button markers) to DB
             assistant_msg = await _save_assistant_message(
-                conversation_id, assistant_text, db
+                conversation_id, clean_text, db
             )
 
             return {
                 "message": _message_to_dict(assistant_msg),
                 "tool_calls": tool_calls_log,
+                "quick_replies": quick_replies,
             }
 
     # If we exhausted tool rounds, return whatever we have
@@ -539,6 +567,7 @@ async def process_message(
     return {
         "message": _message_to_dict(assistant_msg),
         "tool_calls": tool_calls_log,
+        "quick_replies": [],
     }
 
 

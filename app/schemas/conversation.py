@@ -53,3 +53,4 @@ class ChatResponse(BaseSchema):
 
     message: MessageResponse
     tool_calls: list[dict] = []  # For transparency -- show what tools were used
+    quick_replies: list[dict] = []  # Suggested reply buttons [{"label", "value"}]

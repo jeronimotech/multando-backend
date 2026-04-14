@@ -142,6 +142,7 @@ async def _process_single_message(
                 message=text_content,
                 image_base64=image_base64,
                 image_media_type=image_media_type,
+                report_source="whatsapp",
                 db=db,
             )
 

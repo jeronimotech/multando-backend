@@ -6,7 +6,7 @@ and exchanging messages with the Claude-powered AI assistant.
 
 import logging
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
@@ -174,6 +174,7 @@ async def send_message(
     body: MessageSend,
     current_user: CurrentUser,
     db: DbSession,
+    request: Request,
 ) -> ChatResponse:
     """Send a message and get an AI response.
 
@@ -253,6 +254,15 @@ async def send_message(
     # Process through AI engine
     from app.services.chatbot.engine import process_message
 
+    # Detect source from X-API-Key header
+    api_key = request.headers.get("X-API-Key", "")
+    if "multando-flutter-mobile" in api_key or "multando-mobile" in api_key or "multando-web" in api_key:
+        report_source = "mobile"
+    elif api_key:
+        report_source = "sdk"  # Third-party app using our SDK
+    else:
+        report_source = "mobile"
+
     try:
         ai_result = await process_message(
             user_id=current_user.id,
@@ -269,6 +279,7 @@ async def send_message(
                 "device_id": body.device_id,
                 "capture_method": body.capture_method,
             } if body.image_base64 else None,
+            report_source=report_source,
             db=db,
         )
     except ValueError as exc:
