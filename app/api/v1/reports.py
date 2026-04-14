@@ -4,9 +4,11 @@ This module provides endpoints for creating, retrieving, updating,
 and deleting traffic violation reports.
 """
 
+from datetime import datetime, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Header, HTTPException, Query, Request, status
+from fastapi.responses import JSONResponse
 
 from sqlalchemy import select
 
@@ -423,6 +425,218 @@ async def get_reports_by_plate(
     reports = await report_service.get_by_plate(plate)
 
     return [_build_report_summary(r) for r in reports[:limit]]
+
+
+@router.get(
+    "/geojson",
+    summary="Public GeoJSON FeatureCollection of verified reports",
+    description=(
+        "Returns a standard RFC-7946 GeoJSON FeatureCollection of reports "
+        "suitable for embedding in city portals or GIS tools. No auth required. "
+        "Privacy: never includes vehicle plates or reporter identifiers."
+    ),
+)
+async def get_reports_geojson(
+    request: Request,
+    db: DbSession,
+    city_id: int | None = Query(default=None, description="Filter by city ID"),
+    status_filter: str = Query(
+        default="approved,community_verified",
+        alias="status",
+        description=(
+            "Comma-separated list of statuses to include. Authorities typically "
+            "care about ``approved,community_verified``."
+        ),
+    ),
+    since: datetime | None = Query(
+        default=None,
+        description="ISO-8601 datetime — only include reports created at/after this time.",
+    ),
+    bbox: str | None = Query(
+        default=None,
+        description=(
+            'Bounding box filter as "minLon,minLat,maxLon,maxLat" '
+            "(standard GeoJSON bbox order)."
+        ),
+    ),
+    limit: int = Query(default=500, ge=1, le=5000, description="Maximum features to return"),
+    api_key_query: str | None = Query(
+        default=None,
+        alias="api_key",
+        description="Optional API key (for iframe-friendly access). Also accepted via X-API-Key header.",
+    ),
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+):
+    """Public GeoJSON endpoint for embedding Multando reports on city maps.
+
+    This endpoint is intentionally public (no auth) so authority partners can
+    embed it in dashboards and iframes without managing credentials. When an
+    optional API key is provided (header or query param), it is accepted but
+    not required — it can unlock higher rate limits in the future.
+
+    Args:
+        request: Incoming FastAPI request, used for metadata.
+        db: Database session.
+        city_id: Optional city filter (matches ``reports.city_id``).
+        status_filter: Comma-separated list of statuses to include. Defaults to
+            ``approved,community_verified`` — the states authorities trust.
+        since: Only include reports created at or after this ISO-8601 datetime.
+        bbox: Optional bounding box as "minLon,minLat,maxLon,maxLat".
+        limit: Maximum number of features (1-5000, default 500).
+        api_key_query: Optional API key via ``?api_key=`` query string.
+        x_api_key: Optional API key via ``X-API-Key`` header.
+
+    Returns:
+        A GeoJSON FeatureCollection dict. Plate numbers and reporter info are
+        never included in the output.
+    """
+    from app.models import Infraction, Report
+
+    # Parse status filter into a list of valid enum values.
+    requested_statuses: list[str] = []
+    for raw in (status_filter or "").split(","):
+        s = raw.strip()
+        if not s:
+            continue
+        try:
+            requested_statuses.append(ReportStatus(s).value)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid status: {s}",
+            )
+    if not requested_statuses:
+        # Sensible default if caller passes an empty string.
+        requested_statuses = [
+            ReportStatus.APPROVED.value,
+            ReportStatus.COMMUNITY_VERIFIED.value,
+        ]
+
+    # Parse bbox if provided.
+    bbox_values: tuple[float, float, float, float] | None = None
+    if bbox:
+        parts = [p.strip() for p in bbox.split(",")]
+        if len(parts) != 4:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="bbox must be 'minLon,minLat,maxLon,maxLat'",
+            )
+        try:
+            min_lon, min_lat, max_lon, max_lat = (float(p) for p in parts)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="bbox values must be numeric",
+            )
+        if min_lon > max_lon or min_lat > max_lat:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="bbox min values must be <= max values",
+            )
+        bbox_values = (min_lon, min_lat, max_lon, max_lat)
+
+    # Note: api_key_query / x_api_key are accepted but currently advisory.
+    # They'll be used for per-key rate limiting once we wire that up.
+    _ = api_key_query or x_api_key
+
+    # Build the query.
+    q = select(Report).where(Report.status.in_(requested_statuses))
+    if city_id is not None:
+        q = q.where(Report.city_id == city_id)
+    if since is not None:
+        # Normalize naive datetimes to UTC to keep comparisons consistent.
+        if since.tzinfo is None:
+            since = since.replace(tzinfo=timezone.utc)
+        q = q.where(Report.created_at >= since)
+    if bbox_values is not None:
+        min_lon, min_lat, max_lon, max_lat = bbox_values
+        q = q.where(
+            Report.longitude >= min_lon,
+            Report.longitude <= max_lon,
+            Report.latitude >= min_lat,
+            Report.latitude <= max_lat,
+        )
+    q = q.order_by(Report.created_at.desc()).limit(limit)
+
+    result = await db.execute(q)
+    reports = result.scalars().all()
+
+    # Prefetch infractions in a single roundtrip to avoid N+1 lookups.
+    infraction_ids = {r.infraction_id for r in reports if r.infraction_id is not None}
+    infractions_by_id: dict[int, Infraction] = {}
+    if infraction_ids:
+        infr_result = await db.execute(
+            select(Infraction).where(Infraction.id.in_(infraction_ids))
+        )
+        infractions_by_id = {inf.id: inf for inf in infr_result.scalars().all()}
+
+    features: list[dict] = []
+    for r in reports:
+        if r.latitude is None or r.longitude is None:
+            continue
+        infr = infractions_by_id.get(r.infraction_id)
+        status_value = r.status.value if hasattr(r.status, "value") else r.status
+        features.append(
+            {
+                "type": "Feature",
+                "geometry": {
+                    "type": "Point",
+                    # GeoJSON coordinates are [longitude, latitude].
+                    "coordinates": [r.longitude, r.latitude],
+                },
+                "properties": {
+                    "id": str(r.id),
+                    "short_id": r.short_id or "",
+                    "status": status_value,
+                    "infraction": infr.name_en if infr else None,
+                    "infraction_es": infr.name_es if infr else None,
+                    "infraction_category": (
+                        infr.category.value
+                        if infr and hasattr(infr.category, "value")
+                        else (infr.category if infr else None)
+                    ),
+                    "severity": (
+                        infr.severity.value
+                        if infr and hasattr(infr.severity, "value")
+                        else (infr.severity if infr else None)
+                    ),
+                    "confidence_score": getattr(r, "confidence_score", 50) or 50,
+                    "created_at": r.created_at.isoformat() if r.created_at else None,
+                    "incident_datetime": (
+                        r.incident_datetime.isoformat() if r.incident_datetime else None
+                    ),
+                    # Intentionally omitted for privacy:
+                    #   - vehicle_plate
+                    #   - reporter identity
+                },
+            }
+        )
+
+    payload = {
+        "type": "FeatureCollection",
+        "features": features,
+        "metadata": {
+            "total": len(features),
+            "filters": {
+                "city_id": city_id,
+                "status": requested_statuses,
+                "since": since.isoformat() if since else None,
+                "bbox": list(bbox_values) if bbox_values else None,
+                "limit": limit,
+            },
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+        },
+    }
+    # Explicitly allow cross-origin consumption — this endpoint is public
+    # and meant to be embedded by third-party city portals.
+    return JSONResponse(
+        content=payload,
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Cache-Control": "public, max-age=60",
+            "Content-Type": "application/geo+json",
+        },
+    )
 
 
 @router.get(
