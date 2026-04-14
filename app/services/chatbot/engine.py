@@ -7,7 +7,6 @@ and image analysis, using existing Multando services for data operations.
 import base64
 import json
 import logging
-import re
 from datetime import datetime, timezone
 from uuid import UUID
 
@@ -47,62 +46,26 @@ logger = logging.getLogger(__name__)
 MODEL = settings.ANTHROPIC_MODEL
 MAX_TOOL_ROUNDS = 5  # Prevent infinite tool-call loops
 
-# Pattern to extract quick reply buttons: [[Label]] or [[Label|value]]
-_QUICK_REPLY_RE = re.compile(r"\[\[([^\]|]+?)(?:\|([^\]]+?))?\]\]")
+def _normalize_quick_replies(raw: list | None) -> list[dict]:
+    """Coerce the send_reply tool's quick_replies into the API shape.
 
-
-def _extract_quick_replies(text: str) -> tuple[list[dict], str]:
-    """Parse [[Label]] or [[Label|value]] markers from text.
-
-    Returns (quick_replies, cleaned_text).
+    Ensures every item has both label and value (value defaults to label)
+    and drops anything malformed.
     """
-    replies = []
-    for match in _QUICK_REPLY_RE.finditer(text):
-        label = match.group(1).strip()
-        value = (match.group(2) or label).strip()
-        replies.append({"label": label, "value": value})
-    clean = _QUICK_REPLY_RE.sub("", text).strip()
-    # Collapse multiple blank lines
-    clean = re.sub(r"\n{3,}", "\n\n", clean)
-
-    # Fallback: Claude sometimes forgets the [[...]] markers for yes/no
-    # confirmations even though the system prompt requires them. If the
-    # message ends with a question whose last ~200 chars contain a
-    # confirmation phrase, inject default Yes/No buttons. This keeps the
-    # UX consistent across minor prompt-following drift.
-    if not replies and clean.endswith("?"):
-        tail = clean[-240:].lower()
-        confirm_cues_es = [
-            "confirmas", "confirmar", "correcto", "correcta",
-            "correctos", "correctas", "todo bien",
-            "procedo", "procedemos", "creamos", "lo creo",
-            "lo envio", "lo envío", "enviar el reporte",
-            "continuamos", "de acuerdo",
-            "quieres enviar", "deseas enviar",
-            "quieres crear", "deseas crear", "crear el reporte",
-            "listo para", "todo listo",
-        ]
-        confirm_cues_en = [
-            "confirm", "correct", "does this look right",
-            "shall i create", "should i create",
-            "ready to submit", "ready to create",
-            "want to create", "want to submit", "proceed",
-            "sound good", "everything right",
-        ]
-        lang_es = any(cue in tail for cue in confirm_cues_es)
-        lang_en = any(cue in tail for cue in confirm_cues_en)
-        if lang_es:
-            replies = [
-                {"label": "Si, confirmar", "value": "Si"},
-                {"label": "No, cancelar", "value": "No"},
-            ]
-        elif lang_en:
-            replies = [
-                {"label": "Yes, confirm", "value": "Yes"},
-                {"label": "No, cancel", "value": "No"},
-            ]
-
-    return replies, clean
+    if not isinstance(raw, list):
+        return []
+    out: list[dict] = []
+    for item in raw[:4]:
+        if not isinstance(item, dict):
+            continue
+        label = item.get("label")
+        if not isinstance(label, str) or not label.strip():
+            continue
+        value = item.get("value")
+        if not isinstance(value, str) or not value.strip():
+            value = label
+        out.append({"label": label.strip(), "value": value.strip()})
+    return out
 
 
 def _detect_media_type(b64_data: str, fallback: str = "image/jpeg") -> str:
@@ -553,15 +516,41 @@ async def process_message(
                 "quick_replies": [],
             }
 
-        # Check if Claude wants to use tools
+        # Check for a terminal send_reply tool use (structured response).
+        # If present, that's the final answer — extract, save, return.
         if response.stop_reason == "tool_use":
-            # Add the full assistant response to history
+            send_reply_block = next(
+                (
+                    b for b in response.content
+                    if b.type == "tool_use" and b.name == "send_reply"
+                ),
+                None,
+            )
+            if send_reply_block is not None:
+                msg_text = (send_reply_block.input.get("message") or "").strip()
+                quick_replies = _normalize_quick_replies(
+                    send_reply_block.input.get("quick_replies")
+                )
+                if not msg_text:
+                    msg_text = (
+                        "Listo. / Done."
+                    )
+                assistant_msg = await _save_assistant_message(
+                    conversation_id, msg_text, db
+                )
+                return {
+                    "message": _message_to_dict(assistant_msg),
+                    "tool_calls": tool_calls_log,
+                    "quick_replies": quick_replies,
+                }
+
+            # Non-terminal tool use: add assistant turn, execute tools,
+            # feed results back.
             claude_messages.append({
                 "role": "assistant",
                 "content": response.content,
             })
 
-            # Process each tool use block
             tool_results = []
             for block in response.content:
                 if block.type == "tool_use":
@@ -580,31 +569,80 @@ async def process_message(
                         "content": result_str,
                     })
 
-            # Feed tool results back to Claude
             claude_messages.append({"role": "user", "content": tool_results})
 
         else:
-            # Final text response — extract text
-            assistant_text = ""
-            for block in response.content:
-                if hasattr(block, "text"):
-                    assistant_text += block.text
+            # Claude ended the turn with plain text instead of calling
+            # send_reply. Force a structured reply by pushing the text
+            # back and requesting send_reply via tool_choice.
+            stray_text = "".join(
+                b.text for b in response.content if hasattr(b, "text")
+            ).strip()
 
-            # Extract quick reply buttons from markers like [[Yes|Si]]
-            quick_replies, clean_text = _extract_quick_replies(assistant_text)
+            claude_messages.append({
+                "role": "assistant",
+                "content": response.content,
+            })
+            claude_messages.append({
+                "role": "user",
+                "content": (
+                    "Please wrap your previous response by calling the "
+                    "send_reply tool with the same message and any "
+                    "appropriate quick_replies."
+                ),
+            })
 
-            # Save the clean message (without button markers) to DB
-            assistant_msg = await _save_assistant_message(
-                conversation_id, clean_text, db
+            try:
+                forced = client.messages.create(
+                    model=MODEL,
+                    max_tokens=2048,
+                    system=SYSTEM_PROMPT,
+                    tools=TOOLS,
+                    tool_choice={"type": "tool", "name": "send_reply"},
+                    messages=claude_messages,
+                )
+            except anthropic.APIError:
+                logger.exception("Anthropic API error on forced send_reply")
+                assistant_msg = await _save_assistant_message(
+                    conversation_id, stray_text or "Listo.", db
+                )
+                return {
+                    "message": _message_to_dict(assistant_msg),
+                    "tool_calls": tool_calls_log,
+                    "quick_replies": [],
+                }
+
+            forced_block = next(
+                (
+                    b for b in forced.content
+                    if b.type == "tool_use" and b.name == "send_reply"
+                ),
+                None,
             )
+            if forced_block is None:
+                assistant_msg = await _save_assistant_message(
+                    conversation_id, stray_text or "Listo.", db
+                )
+                return {
+                    "message": _message_to_dict(assistant_msg),
+                    "tool_calls": tool_calls_log,
+                    "quick_replies": [],
+                }
 
+            msg_text = (forced_block.input.get("message") or stray_text).strip()
+            quick_replies = _normalize_quick_replies(
+                forced_block.input.get("quick_replies")
+            )
+            assistant_msg = await _save_assistant_message(
+                conversation_id, msg_text, db
+            )
             return {
                 "message": _message_to_dict(assistant_msg),
                 "tool_calls": tool_calls_log,
                 "quick_replies": quick_replies,
             }
 
-    # If we exhausted tool rounds, return whatever we have
+    # If we exhausted tool rounds without a send_reply, return a generic note.
     fallback_text = (
         "He procesado tu solicitud. Si necesitas algo mas, no dudes en preguntar."
     )

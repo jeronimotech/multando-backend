@@ -5,6 +5,56 @@ These tools are used by both the REST API chatbot and the WhatsApp chatbot.
 
 TOOLS = [
     {
+        "name": "send_reply",
+        "description": (
+            "Send the final reply to the user. This is the ONLY way to communicate with "
+            "the user — never produce free-form assistant text; always call send_reply. "
+            "Include quick_replies whenever the user's next input is a choice, a yes/no, "
+            "or a confirmation, so the client can render them as tappable buttons. "
+            "/ Enviar la respuesta final al usuario. Esta es la UNICA forma de responder "
+            "al usuario; nunca escribas texto libre, siempre llama send_reply. Incluye "
+            "quick_replies siempre que la siguiente entrada sea una eleccion, un si/no, "
+            "o una confirmacion, para que el cliente los muestre como botones."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string",
+                    "description": (
+                        "The visible message text (markdown allowed). Must NOT contain "
+                        "[[button]] markers — use the quick_replies array instead."
+                    ),
+                },
+                "quick_replies": {
+                    "type": "array",
+                    "description": (
+                        "Optional list of quick-reply buttons shown below the message. "
+                        "Required for yes/no and confirmation prompts. Max 4 items."
+                    ),
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "label": {
+                                "type": "string",
+                                "description": "Text shown on the button.",
+                            },
+                            "value": {
+                                "type": "string",
+                                "description": (
+                                    "Value sent back when tapped. Omit to reuse the label."
+                                ),
+                            },
+                        },
+                        "required": ["label"],
+                    },
+                    "maxItems": 4,
+                },
+            },
+            "required": ["message"],
+        },
+    },
+    {
         "name": "get_infractions",
         "description": (
             "Obtener la lista de tipos de infraccion de transito disponibles para reportar. "
