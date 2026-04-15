@@ -42,7 +42,28 @@ TOOLS = [
                             "value": {
                                 "type": "string",
                                 "description": (
-                                    "Value sent back when tapped. Omit to reuse the label."
+                                    "Value sent as the user's next message when tapped. "
+                                    "Omit to reuse the label. Ignored when `action` is "
+                                    "not `send_text`."
+                                ),
+                            },
+                            "action": {
+                                "type": "string",
+                                "enum": [
+                                    "send_text",
+                                    "share_location",
+                                    "take_photo",
+                                    "pick_image",
+                                    "open_url",
+                                ],
+                                "description": (
+                                    "What happens when the user taps the button. "
+                                    "`send_text` (default) sends `value` as a plain "
+                                    "message. `share_location` opens the GPS picker. "
+                                    "`take_photo` opens the camera. `pick_image` opens "
+                                    "the gallery. `open_url` opens the URL in `value`. "
+                                    "Use native actions when the next step really needs "
+                                    "that input (e.g. ubicacion real, foto real)."
                                 ),
                             },
                         },

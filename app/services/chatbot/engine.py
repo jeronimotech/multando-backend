@@ -46,11 +46,21 @@ logger = logging.getLogger(__name__)
 MODEL = settings.ANTHROPIC_MODEL
 MAX_TOOL_ROUNDS = 5  # Prevent infinite tool-call loops
 
+_ALLOWED_ACTIONS = {
+    "send_text",
+    "share_location",
+    "take_photo",
+    "pick_image",
+    "open_url",
+}
+
+
 def _normalize_quick_replies(raw: list | None) -> list[dict]:
     """Coerce the send_reply tool's quick_replies into the API shape.
 
-    Ensures every item has both label and value (value defaults to label)
-    and drops anything malformed.
+    Each item is normalized to {label, value, action}. `action` defaults to
+    "send_text"; unknown actions fall back to "send_text". Malformed items
+    are dropped.
     """
     if not isinstance(raw, list):
         return []
@@ -64,7 +74,14 @@ def _normalize_quick_replies(raw: list | None) -> list[dict]:
         value = item.get("value")
         if not isinstance(value, str) or not value.strip():
             value = label
-        out.append({"label": label.strip(), "value": value.strip()})
+        action = item.get("action")
+        if not isinstance(action, str) or action not in _ALLOWED_ACTIONS:
+            action = "send_text"
+        out.append({
+            "label": label.strip(),
+            "value": value.strip(),
+            "action": action,
+        })
     return out
 
 
