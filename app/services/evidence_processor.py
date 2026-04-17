@@ -112,8 +112,8 @@ class EvidenceProcessor:
 
         # 5. Watermark
         ts_display = timestamp or datetime.now(timezone.utc).isoformat()
-        lat_display = latitude if latitude is not None else 0.0
-        lon_display = longitude if longitude is not None else 0.0
+        lat_display = latitude
+        lon_display = longitude
 
         watermarked = self._watermark_image(
             image_bytes,
@@ -217,8 +217,8 @@ class EvidenceProcessor:
         self,
         image_bytes: bytes,
         timestamp: str,
-        lat: float,
-        lon: float,
+        lat: float | None,
+        lon: float | None,
         verified: bool,
         image_hash: str = "",
     ) -> bytes:
@@ -302,7 +302,11 @@ class EvidenceProcessor:
         draw.text((pad, h - ts_h - pad), ts_text, fill=white_t, font=font_meta)
 
         # -- Bottom-right: GPS coordinates --
-        gps_text = f"GPS: {lat:.6f}, {lon:.6f}"
+        gps_text = (
+            f"GPS: {lat:.6f}, {lon:.6f}"
+            if lat is not None and lon is not None
+            else "GPS: N/A"
+        )
         bbox_gps = draw.textbbox((0, 0), gps_text, font=font_meta)
         gps_w = bbox_gps[2] - bbox_gps[0]
         gps_h = bbox_gps[3] - bbox_gps[1]
