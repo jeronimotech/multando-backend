@@ -18,6 +18,11 @@ from app.models.enums import (
     InfractionSeverity,
     MessageDirection,
     MessageType,
+    OfferType,
+    PartnerCategory,
+    PartnerStatus,
+    PartnerTier,
+    RedemptionStatus,
     ReportSource,
     ReportStatus,
     SubscriptionTier,
@@ -58,6 +63,11 @@ class Base(DeclarativeBase):
         MessageType: SAEnum(MessageType, values_callable=_enum_values),
         SubscriptionTier: SAEnum(SubscriptionTier, values_callable=_enum_values),
         AuthorityRole: SAEnum(AuthorityRole, values_callable=_enum_values),
+        PartnerStatus: SAEnum(PartnerStatus, values_callable=_enum_values),
+        PartnerTier: SAEnum(PartnerTier, values_callable=_enum_values),
+        PartnerCategory: SAEnum(PartnerCategory, values_callable=_enum_values),
+        OfferType: SAEnum(OfferType, values_callable=_enum_values),
+        RedemptionStatus: SAEnum(RedemptionStatus, values_callable=_enum_values),
     }
 
 

@@ -71,6 +71,7 @@ class ActivityType(str, Enum):
     LEVEL_UP = "level_up"
     BADGE_EARNED = "badge_earned"
     FALSE_REPORT_PENALTY = "false_report_penalty"
+    OFFER_REDEEMED = "offer_redeemed"
 
 
 class BadgeRarity(str, Enum):
@@ -187,3 +188,53 @@ class AuthorityRole(str, Enum):
     VIEWER = "viewer"
     ANALYST = "analyst"
     ADMIN = "admin"
+
+
+class PartnerStatus(str, Enum):
+    """Status of a partner application/account."""
+
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    SUSPENDED = "suspended"
+
+
+class PartnerTier(str, Enum):
+    """Tier level for partners."""
+
+    COMMUNITY = "community"
+    SILVER = "silver"
+    GOLD = "gold"
+
+
+class PartnerCategory(str, Enum):
+    """Category of partner business."""
+
+    RESTAURANT = "restaurant"
+    STORE = "store"
+    GYM = "gym"
+    ENTERTAINMENT = "entertainment"
+    SERVICES = "services"
+    EDUCATION = "education"
+    HEALTH = "health"
+    OTHER = "other"
+
+
+class OfferType(str, Enum):
+    """Type of offer a partner can create."""
+
+    DISCOUNT_PERCENTAGE = "discount_percentage"
+    DISCOUNT_FIXED = "discount_fixed"
+    FREE_PRODUCT = "free_product"
+    EXPERIENCE = "experience"
+    VOUCHER = "voucher"
+
+
+class RedemptionStatus(str, Enum):
+    """Status of an offer redemption."""
+
+    PENDING = "pending"
+    CONFIRMED = "confirmed"
+    USED = "used"
+    EXPIRED = "expired"
+    CANCELLED = "cancelled"
