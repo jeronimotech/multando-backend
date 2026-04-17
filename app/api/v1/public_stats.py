@@ -31,6 +31,7 @@ from app.models import (
     Report,
     ReportStatus,
 )
+from app.models.api_key import ApiKey
 
 logger = logging.getLogger(__name__)
 
@@ -544,5 +545,52 @@ async def get_authority_public_profile(
             "average_processing_time_hours": None,
             "active_since": None,
         }
+    await _cache_set(cache_key, payload)
+    return payload
+
+
+# --- Public integrations showcase -------------------------------------------
+
+
+@router.get("/integrations")
+async def list_public_integrations(db: DbSession) -> list[dict]:
+    """List registered third-party integrations for the public landing page.
+
+    Returns ONLY the display name and creation date of active, non-expired
+    API keys. NO key hashes, prefixes, scopes, user IDs, or any secret
+    material is ever exposed.
+
+    Cached for 5 minutes.
+    """
+    cache_key = "integrations"
+    cached = await _cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    now = datetime.now(timezone.utc)
+    result = await db.execute(
+        select(ApiKey.name, ApiKey.created_at)
+        .where(
+            and_(
+                ApiKey.is_active.is_(True),
+                # Exclude internal / first-party keys
+                ApiKey.name.notilike("%multando%"),
+            )
+        )
+        .where(
+            # Not expired
+            (ApiKey.expires_at.is_(None)) | (ApiKey.expires_at > now)
+        )
+        .order_by(ApiKey.created_at)
+    )
+    rows = result.all()
+
+    payload = [
+        {
+            "name": row.name,
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+        }
+        for row in rows
+    ]
     await _cache_set(cache_key, payload)
     return payload
