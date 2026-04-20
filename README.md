@@ -1,103 +1,56 @@
-# Multando Backend API
+# Multando Backend
 
-![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)
-![Python](https://img.shields.io/badge/Python_3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)
-![Redis](https://img.shields.io/badge/Redis-DC382D?style=for-the-badge&logo=redis&logoColor=white)
-![Solana](https://img.shields.io/badge/Solana-9945FF?style=for-the-badge&logo=solana&logoColor=white)
+<!-- TODO: Add logo/banner image -->
 
-> Traffic violation reporting platform backend with blockchain rewards. Citizens report violations, earn **MULTA** tokens on Solana, and authorities access verified data through a unified API.
+**Open-source platform for citizen documentation of traffic infractions.**
+
+[![License: BSL 1.1](https://img.shields.io/badge/License-BSL_1.1-blue.svg)](./LICENSE)
+[![Python 3.11+](https://img.shields.io/badge/Python-3.11+-3776AB.svg?logo=python&logoColor=white)](https://python.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 
 ---
 
-## Tech Stack
+## Features
+
+- **AI Chatbot** -- Claude-powered assistant guides users through reporting
+- **Secure Evidence Capture** -- Encrypted photo/video storage with chain-of-custody metadata
+- **Community Verification** -- Peer review system for report validation
+- **Authority Integration** -- Direct data sync with government traffic agencies
+- **Blockchain Rewards** -- MULTA token incentives on Solana for verified reports
+- **Rate-Limit Safeguards** -- Anti-spam via Redis-backed sliding windows (per-IP and per-user)
+- **Reporter Anonymity** -- Identity protection for citizen reporters
+
+## Quick Start (Self-Hosting)
+
+```bash
+# 1. Clone and configure
+git clone https://github.com/multando/multando-backend.git
+cd multando-backend
+cp .env.example .env   # Edit with your secrets
+
+# 2. Start all services
+docker compose -f docker-compose.self-host.yml up -d
+
+# 3. Verify
+curl http://localhost:8000/health
+```
+
+The API will be running at `http://localhost:8000`. Swagger docs at `/docs`.
+
+## Architecture
 
 | Layer | Technology |
 |-------|-----------|
 | Framework | FastAPI (async) |
 | ORM | SQLAlchemy 2.0 (async) |
 | Database | PostgreSQL + PostGIS |
+| Migrations | Alembic |
 | Cache / Queue | Redis |
 | Task Runner | Celery + Beat |
-| Blockchain | Solana (solana-py, anchorpy) |
-| Auth | JWT (access + refresh) + API keys |
-| Deployment | Railway (Docker) |
-
-## Key Features
-
-- **74 REST endpoints** across 12 route groups
-- **JWT + API key authentication** with role-based access control
-- **Custodial wallets** -- automatic Solana keypair creation per user
-- **Rate limiting** -- per-IP and per-user with Redis-backed sliding windows
-- **RECORD integration** -- government traffic authority data sync
-- **PostGIS geospatial** queries for location-based reports
-- **Celery workers** for async reward distribution, media processing, and notifications
-- **Alembic migrations** for schema versioning
-
-## Quick Start
-
-### With Docker (recommended)
-
-```bash
-docker compose up --build
-```
-
-The API will be available at `http://localhost:8000`. Swagger docs at `/docs`.
-
-### Without Docker
-
-```bash
-# Install dependencies
-pip install -e ".[dev]"
-
-# Run migrations
-alembic upgrade head
-
-# Start the server
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-Start the Celery worker and beat scheduler separately:
-
-```bash
-celery -A app.worker worker --loglevel=info
-celery -A app.worker beat --loglevel=info
-```
-
-## Environment Variables
-
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `DATABASE_URL` | PostgreSQL connection string | `postgresql+asyncpg://user:pass@localhost/multando` |
-| `REDIS_URL` | Redis connection string | `redis://localhost:6379/0` |
-| `JWT_SECRET_KEY` | Secret for signing JWT tokens | `your-secret-key` |
-| `JWT_ALGORITHM` | JWT signing algorithm | `HS256` |
-| `SOLANA_RPC_URL` | Solana RPC endpoint | `https://api.devnet.solana.com` |
-| `MULTA_MINT_ADDRESS` | SPL token mint address | `MULTA...` |
-| `AUTHORITY_KEYPAIR` | Base58 encoded authority keypair | `[...]` |
-| `WHATSAPP_VERIFY_TOKEN` | WhatsApp webhook verification | `your-verify-token` |
-| `ANTHROPIC_API_KEY` | Claude API key (chatbot features) | `sk-ant-...` |
-| `S3_BUCKET` | Media storage bucket | `multando-uploads` |
-| `ALLOWED_ORIGINS` | CORS origins (comma-separated) | `https://multando.com` |
-
-## API Endpoint Groups
-
-| Group | Prefix | Endpoints | Description |
-|-------|--------|-----------|-------------|
-| Auth | `/api/v1/auth` | 8 | Register, login, refresh, password reset |
-| Reports | `/api/v1/reports` | 12 | Create, list, update, verify violations |
-| Wallet | `/api/v1/wallet` | 7 | Balance, transactions, custodial management |
-| Blockchain | `/api/v1/blockchain` | 6 | Rewards, staking, token distribution |
-| Users | `/api/v1/users` | 8 | Profile, preferences, achievements |
-| Cities | `/api/v1/cities` | 5 | Supported cities and jurisdictions |
-| Admin | `/api/v1/admin` | 10 | User management, analytics, moderation |
-| Authority | `/api/v1/authority` | 6 | Government portal, bulk data access |
-| Developers | `/api/v1/developers` | 4 | API key management, SDK config |
-| Achievements | `/api/v1/achievements` | 4 | Badges, streaks, leaderboard |
-| Notifications | `/api/v1/notifications` | 3 | Push, email, in-app |
-| Health | `/api/v1/health` | 1 | Readiness and liveness probe |
-
-## Architecture
+| Object Storage | MinIO / S3-compatible |
+| AI | Anthropic Claude |
+| Blockchain | Solana (MULTA token) |
+| Auth | JWT + API keys |
 
 ```
 Client Request
@@ -107,44 +60,84 @@ Client Request
      |
      +---> Routes ---> Services ---> Models ---> PostgreSQL + PostGIS
      |                    |
+     |                    +---> Anthropic Claude (AI chatbot)
+     |                    +---> MinIO / S3 (evidence storage)
      |                    +---> Solana RPC (rewards, staking)
-     |                    +---> S3 (media uploads)
      |
      +---> Celery Worker ---> Redis (broker)
               |
               +---> Reward distribution
               +---> Media processing
               +---> Notification dispatch
-              +---> RECORD data sync
 ```
 
-## Database Migrations
+## Self-Hosting Guide
+
+### Prerequisites
+
+- Docker and Docker Compose
+- A domain with HTTPS (for production)
+- Anthropic API key (optional, for AI chatbot features)
+
+### Configuration
+
+1. Copy `.env.example` to `.env` and set all required values (especially `SECRET_KEY`)
+2. Start services: `docker compose -f docker-compose.self-host.yml up -d`
+3. Migrations run automatically on startup via the Dockerfile entrypoint
+4. Create the MinIO bucket if needed (the default bucket name is `multando-evidence`)
+
+See [.env.example](./.env.example) for all available environment variables.
+
+### Database Migrations
 
 ```bash
+# Run inside the container
+docker compose -f docker-compose.self-host.yml exec multando-api alembic upgrade head
+
 # Create a new migration
 alembic revision --autogenerate -m "description"
-
-# Apply all pending migrations
-alembic upgrade head
-
-# Rollback one migration
-alembic downgrade -1
 ```
 
-## Testing
+## API Documentation
 
-```bash
-pytest tests/ -v
-```
+After starting the server, visit:
 
-## Deployment
+- **Swagger UI:** http://localhost:8000/docs
+- **ReDoc:** http://localhost:8000/redoc
 
-Railway configuration is included via `railway.toml`, `railway.worker.toml`, and `railway.beat.toml`. The project deploys as three services:
+The API exposes 74 endpoints across 12 route groups including auth, reports, wallets, blockchain, admin, and authority portals.
 
-1. **API** -- the main FastAPI server
-2. **Worker** -- Celery task worker
-3. **Beat** -- Celery periodic task scheduler
+## Contributing
+
+We welcome contributions! See [CONTRIBUTING.md](./CONTRIBUTING.md) for:
+
+- Development environment setup
+- Code style guidelines (Black, Ruff, type hints)
+- Pull request process
+- CLA information
 
 ## License
 
-All rights reserved. Proprietary software.
+This project is licensed under the [Business Source License 1.1](./LICENSE).
+
+**What this means:**
+- You are free to self-host, audit, modify, and contribute
+- Governments and organizations can use it for internal/non-commercial production
+- You may NOT offer it (or a derivative) as a competing commercial SaaS to third parties
+- On 2030-04-20, the license automatically converts to Apache 2.0
+
+For commercial licensing inquiries, contact licensing@multando.com.
+
+## Hosted Version
+
+Don't want to self-host? Use the fully managed platform at **[multando.com](https://multando.com)** which includes:
+
+- MULTA token rewards and staking
+- Partner marketplace
+- Cross-city reporting network
+- Priority support and SLA
+- Automatic updates and scaling
+
+---
+
+Built by [Jeronimo Technologies S.A.S.](https://jeronimo.co)
