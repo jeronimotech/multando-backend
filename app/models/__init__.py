@@ -64,6 +64,9 @@ from app.models.partner import OfferRedemption, Partner, PartnerOffer
 # RECORD submission tracking
 from app.models.record_submission import RecordSubmission, RecordSubmissionStatus
 
+# Federation models
+from app.models.federation import FederatedReport, FederationInstance
+
 __all__ = [
     # Base
     "Base",
@@ -127,4 +130,7 @@ __all__ = [
     # RECORD submission tracking
     "RecordSubmission",
     "RecordSubmissionStatus",
+    # Federation models
+    "FederatedReport",
+    "FederationInstance",
 ]

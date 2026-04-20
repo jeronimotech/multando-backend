@@ -220,3 +220,8 @@ async def get_current_authority_admin(
 # Annotated aliases for the new dependencies
 AdminUser = Annotated[User, Depends(require_admin)]
 AuthorityAdmin = Annotated[tuple[User, Authority], Depends(get_current_authority_admin)]
+
+# Enterprise feature gate
+from app.core.enterprise import require_enterprise  # noqa: E402
+
+EnterpriseRequired = Depends(require_enterprise)

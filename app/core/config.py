@@ -99,6 +99,23 @@ class Settings(BaseSettings):
     HOT_WALLET_KEYPAIR_PATH: str = ""
     HOT_WALLET_MIN_BALANCE: float = 1000.0
 
+    # Federation (for self-hosted instances connecting to the hub)
+    FEDERATION_ENABLED: bool = False
+    FEDERATION_HUB_URL: str = "https://api.multando.com"
+    FEDERATION_API_KEY: str = ""  # Hub-issued key for this instance
+    FEDERATION_INSTANCE_ID: str = ""  # Unique ID for this instance (UUID)
+    FEDERATION_SYNC_INTERVAL_SECONDS: int = 300  # 5 min batch sync
+
+    # Enterprise license
+    ENTERPRISE_LICENSE_KEY: str = ""  # Empty = community edition
+    ENTERPRISE_FEATURES_ENABLED: bool = False  # Auto-set based on license key
+
+    # White-label (enterprise)
+    PLATFORM_NAME: str = "Multando"
+    PLATFORM_LOGO_URL: str = ""
+    PLATFORM_PRIMARY_COLOR: str = "#EF4444"
+    PLATFORM_SUPPORT_EMAIL: str = "support@multando.com"
+
     # Abuse prevention / reporter safeguards
     # Max MULTA a single user can earn from reports in one calendar month.
     # Anything past the cap is silently truncated and an activity log entry

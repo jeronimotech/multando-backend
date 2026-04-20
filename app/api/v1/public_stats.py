@@ -549,6 +549,29 @@ async def get_authority_public_profile(
     return payload
 
 
+# --- /public/edition ---------------------------------------------------------
+
+
+@router.get(
+    "/edition",
+    summary="Platform edition info",
+    description=(
+        "Returns the current edition (community or enterprise), version, "
+        "and the list of available enterprise features. The frontend uses "
+        "this to show/hide premium UI sections."
+    ),
+)
+async def get_edition_info() -> dict[str, Any]:
+    """Return edition, version, and available enterprise features."""
+    from app.core.enterprise import get_edition, get_enterprise_features
+
+    return {
+        "edition": get_edition(),
+        "version": "0.1.0",
+        "features": get_enterprise_features(),
+    }
+
+
 # --- Public integrations showcase -------------------------------------------
 
 

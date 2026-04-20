@@ -29,6 +29,8 @@ from app.api.v1.evidence import router as evidence_router
 from app.api.v1.whatsapp import router as whatsapp_router
 from app.api.v1.widgets import router as widgets_router
 from app.api.v1.partners import router as partners_router
+from app.api.v1.enterprise import router as enterprise_router
+from app.api.v1.federation import router as federation_router
 from app.api.v1.public_stats import (
     router as public_stats_router,
     public_authority_router,
@@ -72,5 +74,7 @@ router.include_router(whatsapp_router)
 router.include_router(leaderboard_router)
 router.include_router(widgets_router)
 router.include_router(partners_router)
+router.include_router(enterprise_router)
+router.include_router(federation_router)
 router.include_router(public_stats_router)
 router.include_router(public_authority_router)

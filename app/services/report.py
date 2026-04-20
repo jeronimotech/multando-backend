@@ -11,6 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.config import settings
 from app.models import (
     Activity,
     ActivityType,
@@ -175,6 +176,20 @@ class ReportService:
 
                 logging.getLogger(__name__).warning(
                     "Failed to trigger webhooks for new report %s",
+                    report.id,
+                    exc_info=True,
+                )
+
+        # Push to federation hub if enabled (fire-and-forget in savepoint)
+        if settings.FEDERATION_ENABLED:
+            try:
+                async with self.db.begin_nested():
+                    from app.services.federation import FederationService
+
+                    await FederationService.push_to_hub([report])
+            except Exception:
+                logger.warning(
+                    "Failed to push report %s to federation hub",
                     report.id,
                     exc_info=True,
                 )
