@@ -14,6 +14,8 @@ Flow:
 
 import logging
 import secrets
+
+logger = logging.getLogger(__name__)
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode, urlparse, urlunparse, parse_qs
 
@@ -105,6 +107,31 @@ def _validate_scopes(requested: str, api_key: ApiKey) -> list[str]:
     return scopes
 
 
+def _validate_redirect_uri(redirect_uri: str, api_key) -> None:
+    """Ensure redirect_uri is registered for this OAuth client.
+
+    If the API key has no redirect_uris configured (empty or null),
+    any URI is accepted (backward-compatible MVP behavior with a
+    logged warning).
+    """
+    allowed = api_key.redirect_uris or []
+    if not allowed:
+        logger.warning(
+            "API key %s (%s) has no registered redirect_uris — "
+            "accepting any redirect_uri for now",
+            api_key.id, api_key.name,
+        )
+        return
+    if redirect_uri not in allowed:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"redirect_uri is not registered for this client. "
+                f"Allowed: {', '.join(allowed)}"
+            ),
+        )
+
+
 def _build_redirect_url(redirect_uri: str, code: str, state: str | None) -> str:
     """Append code and state query params to the redirect URI."""
     parsed = urlparse(redirect_uri)
@@ -150,6 +177,7 @@ async def authorize_get(
         )
 
     api_key = await _validate_client(db, client_id)
+    _validate_redirect_uri(redirect_uri, api_key)
     scopes = _validate_scopes(scope, api_key)
 
     return OAuthConsentInfo(
@@ -178,6 +206,7 @@ async def authorize_post(
     calls this after the user clicks "Authorize" on the consent screen.
     """
     api_key = await _validate_client(db, client_id)
+    _validate_redirect_uri(redirect_uri, api_key)
     scopes = _validate_scopes(scope, api_key)
 
     # Generate a cryptographically random authorization code

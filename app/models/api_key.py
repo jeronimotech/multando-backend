@@ -37,6 +37,9 @@ class ApiKey(TimestampMixin, Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     rate_limit: Mapped[int] = mapped_column(Integer, default=60, nullable=False)
     scopes: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
+    redirect_uris: Mapped[Optional[list]] = mapped_column(
+        JSONB, nullable=True, default=list
+    )  # Allowed OAuth redirect URIs for this client
     last_used_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

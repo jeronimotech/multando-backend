@@ -7,9 +7,12 @@ for use with Multando SDKs.
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import CurrentUser, get_db
+from app.models.api_key import ApiKey
 from app.schemas.api_key import (
     ApiKeyCreateRequest,
     ApiKeyCreateResponse,
@@ -168,3 +171,71 @@ async def delete_api_key(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to delete API key",
         )
+
+
+class RedirectUrisUpdate(BaseModel):
+    """Request to update OAuth redirect URIs for an API key."""
+
+    redirect_uris: list[str]
+
+
+@router.put("/{key_id}/redirect-uris", status_code=status.HTTP_200_OK)
+async def update_redirect_uris(
+    key_id: int,
+    body: RedirectUrisUpdate,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Update the allowed OAuth redirect URIs for an API key.
+
+    Only the key owner can update. URIs should be full callback URLs
+    (e.g. "zppcitizen://oauth/callback" or "https://myapp.com/callback").
+    """
+    result = await db.execute(
+        select(ApiKey).where(
+            ApiKey.id == key_id,
+            ApiKey.user_id == current_user.id,
+        )
+    )
+    api_key = result.scalar_one_or_none()
+    if not api_key:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="API key not found",
+        )
+
+    api_key.redirect_uris = body.redirect_uris
+    await db.flush()
+    await db.commit()
+
+    return {
+        "key_id": key_id,
+        "redirect_uris": api_key.redirect_uris,
+    }
+
+
+@router.get("/{key_id}/redirect-uris", status_code=status.HTTP_200_OK)
+async def get_redirect_uris(
+    key_id: int,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Get the registered OAuth redirect URIs for an API key."""
+    result = await db.execute(
+        select(ApiKey).where(
+            ApiKey.id == key_id,
+            ApiKey.user_id == current_user.id,
+        )
+    )
+    api_key = result.scalar_one_or_none()
+    if not api_key:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="API key not found",
+        )
+
+    return {
+        "key_id": key_id,
+        "name": api_key.name,
+        "redirect_uris": api_key.redirect_uris or [],
+    }
