@@ -128,6 +128,14 @@ class User(TimestampMixin, Base):
         default=WalletType.CUSTODIAL, nullable=False
     )
 
+    # Social / OAuth
+    auth_provider: Mapped[str] = mapped_column(
+        String(20), default="email", nullable=False, server_default="email"
+    )
+    provider_id: Mapped[Optional[str]] = mapped_column(
+        String(255), unique=True, nullable=True
+    )
+
     # Profile
     display_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     avatar_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)

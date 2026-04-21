@@ -101,6 +101,24 @@ class PasswordResetConfirm(BaseSchema):
         return v
 
 
+class SocialLoginRequest(BaseSchema):
+    """Schema for social/OAuth login request."""
+
+    provider: str = Field(default="google", description="OAuth provider name")
+    code: str | None = Field(
+        default=None,
+        description="Authorization code (web OAuth flow)",
+    )
+    id_token: str | None = Field(
+        default=None,
+        description="ID token (mobile Google Sign-In flow)",
+    )
+    redirect_uri: str | None = Field(
+        default=None,
+        description="Redirect URI used in the authorization request (required with code)",
+    )
+
+
 class WalletLinkRequest(BaseSchema):
     """Schema for linking a Solana wallet to user account."""
 

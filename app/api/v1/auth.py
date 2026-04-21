@@ -16,6 +16,7 @@ from app.schemas.auth import (
     LoginRequest,
     RefreshRequest,
     RegisterRequest,
+    SocialLoginRequest,
     TokenResponse,
     WalletLinkRequest,
 )
@@ -211,6 +212,169 @@ async def login(
             detail="Invalid email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User account is inactive",
+        )
+
+    return _create_tokens(str(user.id))
+
+
+@router.post(
+    "/oauth/{provider}",
+    response_model=TokenResponse,
+    summary="Social login via OAuth provider",
+    description="Authenticate using a social provider (Google). "
+    "Send either an authorization code (web) or an ID token (mobile).",
+)
+async def social_login(
+    provider: str,
+    body: SocialLoginRequest,
+    db: DbSession,
+) -> TokenResponse:
+    """Authenticate via a social OAuth provider.
+
+    Supports two flows:
+    - **Web**: frontend sends an authorization code + redirect_uri.
+    - **Mobile**: app sends a Google ID token directly.
+
+    If the Google account's email matches an existing user, the accounts are
+    linked. Otherwise a new user is created (no password, pre-verified).
+
+    Args:
+        provider: OAuth provider name (currently only "google").
+        body: Social login payload with code or id_token.
+        db: Database session.
+
+    Returns:
+        TokenResponse with access and refresh tokens.
+
+    Raises:
+        HTTPException: 400 for unsupported provider or missing credentials.
+        HTTPException: 401 if the OAuth exchange fails.
+    """
+    from datetime import datetime, timezone
+
+    from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
+
+    from app.models.user import User, UserBadge
+    from app.services.oauth import GoogleOAuthError, GoogleOAuthService
+
+    # 1. Validate provider
+    supported_providers = {"google"}
+    if provider not in supported_providers:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported OAuth provider: {provider}. "
+            f"Supported: {', '.join(sorted(supported_providers))}",
+        )
+
+    # 2. Exchange code or verify ID token
+    if not body.code and not body.id_token:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Either 'code' or 'id_token' must be provided",
+        )
+
+    google_service = GoogleOAuthService()
+    try:
+        if body.code:
+            if not body.redirect_uri:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="'redirect_uri' is required when using 'code'",
+                )
+            user_info = await google_service.exchange_code(
+                code=body.code, redirect_uri=body.redirect_uri
+            )
+        else:
+            user_info = await google_service.verify_id_token(body.id_token)
+    except GoogleOAuthError as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(e),
+        )
+
+    # 3. Find or create user
+    # First try by provider_id
+    result = await db.execute(
+        select(User)
+        .options(
+            selectinload(User.level),
+            selectinload(User.badges).selectinload(UserBadge.badge),
+        )
+        .where(User.provider_id == user_info.google_id)
+    )
+    user = result.scalar_one_or_none()
+
+    if not user:
+        # Try by email
+        result = await db.execute(
+            select(User)
+            .options(
+                selectinload(User.level),
+                selectinload(User.badges).selectinload(UserBadge.badge),
+            )
+            .where(User.email == user_info.email)
+        )
+        user = result.scalar_one_or_none()
+
+        if user:
+            # Link existing email account to Google
+            user.provider_id = user_info.google_id
+            if user_info.picture_url and not user.avatar_url:
+                user.avatar_url = user_info.picture_url
+            user.last_login_at = datetime.now(timezone.utc)
+            await db.flush()
+        else:
+            # Create brand-new user from Google info
+            from app.models.user import Level
+
+            default_level_result = await db.execute(
+                select(Level).where(Level.tier == 1)
+            )
+            default_level = default_level_result.scalar_one_or_none()
+
+            user = User(
+                email=user_info.email,
+                display_name=user_info.name or user_info.email.split("@")[0],
+                avatar_url=user_info.picture_url,
+                auth_provider="google",
+                provider_id=user_info.google_id,
+                password_hash=None,
+                is_active=True,
+                is_verified=True,
+                level_id=default_level.id if default_level else None,
+            )
+            db.add(user)
+            await db.flush()
+            await db.refresh(user)
+
+            # Auto-provision custodial wallet
+            from app.services.wallet import WalletService
+
+            wallet_service = WalletService(db)
+            await wallet_service.create_custodial_wallet(user.id)
+
+            # Reload with relationships
+            result = await db.execute(
+                select(User)
+                .options(
+                    selectinload(User.level),
+                    selectinload(User.badges).selectinload(UserBadge.badge),
+                )
+                .where(User.id == user.id)
+            )
+            user = result.scalar_one_or_none()
+    else:
+        # Existing user found by provider_id — update last login
+        user.last_login_at = datetime.now(timezone.utc)
+        if user_info.picture_url:
+            user.avatar_url = user_info.picture_url
+        await db.flush()
 
     if not user.is_active:
         raise HTTPException(
