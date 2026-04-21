@@ -67,6 +67,10 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: str = ""
     ANTHROPIC_MODEL: str = "claude-sonnet-4-20250514"
 
+    # OAuth 2.0 Provider (Multando as authorization server)
+    OAUTH_CODE_EXPIRE_MINUTES: int = 10
+    OAUTH_ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+
     # Rate limiting
     RATE_LIMIT_PER_MINUTE: int = 60
 

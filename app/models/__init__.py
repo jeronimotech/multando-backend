@@ -67,6 +67,9 @@ from app.models.record_submission import RecordSubmission, RecordSubmissionStatu
 # Federation models
 from app.models.federation import FederatedReport, FederationInstance
 
+# OAuth models
+from app.models.oauth import OAuthAuthorizationCode
+
 __all__ = [
     # Base
     "Base",
@@ -133,4 +136,6 @@ __all__ = [
     # Federation models
     "FederatedReport",
     "FederationInstance",
+    # OAuth models
+    "OAuthAuthorizationCode",
 ]

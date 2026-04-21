@@ -7,6 +7,7 @@ from fastapi import APIRouter
 
 from app.api.v1.auth import router as auth_router
 from app.api.v1.oauth import router as oauth_router
+from app.api.v1.oauth_provider import router as oauth_provider_router
 from app.api.v1.authorities import router as authorities_router
 from app.api.v1.blockchain import router as blockchain_router
 from app.api.v1.gamification import router as gamification_router
@@ -52,6 +53,7 @@ async def root() -> dict[str, str]:
 # Include sub-routers
 router.include_router(auth_router)
 router.include_router(oauth_router)
+router.include_router(oauth_provider_router)
 router.include_router(users_router)
 router.include_router(reports_router)
 router.include_router(infractions_router)
