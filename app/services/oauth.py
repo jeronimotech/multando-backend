@@ -134,12 +134,21 @@ class GoogleOAuthService:
 
             data = resp.json()
 
-            # Verify the token was issued for our client
+            # Verify the token was issued for one of our clients
+            # (web, Android, or iOS — each platform has its own client ID)
             aud = data.get("aud", "")
-            if aud != settings.GOOGLE_CLIENT_ID:
+            allowed_audiences = {
+                cid
+                for cid in [
+                    settings.GOOGLE_CLIENT_ID,
+                    settings.GOOGLE_CLIENT_ID_ANDROID,
+                    settings.GOOGLE_CLIENT_ID_IOS,
+                ]
+                if cid  # skip empty strings
+            }
+            if aud not in allowed_audiences:
                 raise GoogleOAuthError(
-                    "ID token audience mismatch: expected "
-                    f"{settings.GOOGLE_CLIENT_ID}, got {aud}"
+                    f"ID token audience mismatch: got {aud}"
                 )
 
             email = data.get("email")

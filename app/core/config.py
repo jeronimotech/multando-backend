@@ -46,8 +46,10 @@ class Settings(BaseSettings):
     STORAGE_BASE_URL: str = "https://storage.multando.com"
 
     # OAuth Providers
-    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_ID: str = ""  # Web client (code exchange + default audience)
     GOOGLE_CLIENT_SECRET: str = ""
+    GOOGLE_CLIENT_ID_ANDROID: str = ""  # Android client (ID token audience)
+    GOOGLE_CLIENT_ID_IOS: str = ""  # iOS client (ID token audience)
     GITHUB_CLIENT_ID: str = ""
     GITHUB_CLIENT_SECRET: str = ""
 
