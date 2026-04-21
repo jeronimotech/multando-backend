@@ -140,4 +140,4 @@ Don't want to self-host? Use the fully managed platform at **[multando.com](http
 
 ---
 
-Built by [Jeronimo Technologies S.A.S.](https://jeronimo.co)
+Built by [Jerónimo SAS](https://jeronimo.co)

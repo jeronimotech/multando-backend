@@ -78,7 +78,7 @@ All new source files should include the following header:
 
 ```python
 # SPDX-License-Identifier: BSL-1.1
-# Copyright (c) 2026 Jeronimo Technologies S.A.S.
+# Copyright (c) 2026 Jerónimo SAS
 ```
 
 ## Pull Request Process
