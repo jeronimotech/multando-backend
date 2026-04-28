@@ -299,26 +299,16 @@ async def social_login(
         )
 
     # 3. Find or create user
-    # First try by provider_id
+    # First try by provider_id (simple query — no eager loading yet)
     result = await db.execute(
-        select(User)
-        .options(
-            selectinload(User.level),
-            selectinload(User.badges).selectinload(UserBadge.badge),
-        )
-        .where(User.provider_id == user_info.google_id)
+        select(User).where(User.provider_id == user_info.google_id)
     )
     user = result.scalar_one_or_none()
 
     if not user:
         # Try by email
         result = await db.execute(
-            select(User)
-            .options(
-                selectinload(User.level),
-                selectinload(User.badges).selectinload(UserBadge.badge),
-            )
-            .where(User.email == user_info.email)
+            select(User).where(User.email == user_info.email)
         )
         user = result.scalar_one_or_none()
 
@@ -372,6 +362,19 @@ async def social_login(
     else:
         # Existing user found by provider_id — update last login
         user.last_login_at = datetime.now(timezone.utc)
+
+    # Reload with full relationships for token generation
+    if user is not None:
+        await db.flush()
+        result = await db.execute(
+            select(User)
+            .options(
+                selectinload(User.level),
+                selectinload(User.badges).selectinload(UserBadge.badge),
+            )
+            .where(User.id == user.id)
+        )
+        user = result.scalar_one_or_none()
         if user_info.picture_url:
             user.avatar_url = user_info.picture_url
         await db.flush()
