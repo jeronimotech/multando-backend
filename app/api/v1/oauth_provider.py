@@ -43,6 +43,8 @@ router = APIRouter(prefix="/oauth", tags=["oauth-provider"])
 ALLOWED_SCOPES = {
     "reports:create",
     "reports:read",
+    "infractions:read",
+    "users:read",
     "balance:read",
     "profile:read",
 }
