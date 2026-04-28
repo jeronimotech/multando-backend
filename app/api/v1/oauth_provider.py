@@ -39,16 +39,6 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/oauth", tags=["oauth-provider"])
 
-# Allowed scopes that can be requested by third-party apps
-ALLOWED_SCOPES = {
-    "reports:create",
-    "reports:read",
-    "infractions:read",
-    "users:read",
-    "balance:read",
-    "profile:read",
-}
-
 REFRESH_TOKEN_EXPIRE_DAYS = 30
 
 
@@ -79,7 +69,7 @@ async def _validate_client(
 
 
 def _validate_scopes(requested: str, api_key: ApiKey) -> list[str]:
-    """Validate that requested scopes are allowed and within the API key's scope."""
+    """Validate that requested scopes are within the API key's allowed scopes."""
     scopes = [s.strip() for s in requested.split(",") if s.strip()]
     if not scopes:
         raise HTTPException(
@@ -87,24 +77,19 @@ def _validate_scopes(requested: str, api_key: ApiKey) -> list[str]:
             detail="At least one scope is required",
         )
 
-    # Check against global allowed scopes
-    invalid = set(scopes) - ALLOWED_SCOPES
+    # Validate against the API key's own scopes — no hardcoded global list
+    key_scopes = set(api_key.scopes) if api_key.scopes else set()
+    if not key_scopes:
+        # Key has no scope restrictions — allow all requested
+        return scopes
+
+    invalid = set(scopes) - key_scopes
     if invalid:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid scopes: {', '.join(sorted(invalid))}. "
-            f"Allowed: {', '.join(sorted(ALLOWED_SCOPES))}",
+            detail=f"Scopes exceed API key permissions: {', '.join(sorted(invalid))}. "
+            f"Allowed: {', '.join(sorted(key_scopes))}",
         )
-
-    # If the API key has restricted scopes, enforce them
-    if api_key.scopes:
-        key_scopes = set(api_key.scopes)
-        over = set(scopes) - key_scopes
-        if over:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Scopes exceed API key permissions: {', '.join(sorted(over))}",
-            )
 
     return scopes
 
