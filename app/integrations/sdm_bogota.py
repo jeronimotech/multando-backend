@@ -1,12 +1,17 @@
 """Submit verified Bogota reports to the SDM (Secretaría Distrital de Movilidad) Google Form.
 
 The SDM provides a public Google Form for citizens to report traffic violations
-with photographic/video evidence. When a Multando report in Bogota reaches
-community_verified or approved status, this service submits it automatically.
+with photographic/video evidence. Since the form requires Google authentication
+for file uploads (which cannot be automated reliably in headless browsers),
+evidence is uploaded to a shared Google Drive folder and a pre-filled form URL
+is generated for manual review and submission by an admin.
 
-Since Google Forms file-upload fields cannot be filled via HTTP POST, evidence
-is uploaded to a shared Google Drive folder and the shareable link is included
-in the form description field.
+Workflow:
+1. Upload evidence files to Google Drive (shareable links).
+2. Build a pre-fill URL with all text/radio/dropdown fields populated.
+3. Include the Drive evidence link(s) in the description field.
+4. Store both the pre-fill URL and Drive links in the SDMSubmission record.
+5. An admin clicks the pre-fill URL, attaches the file from Drive, and submits.
 """
 
 import io
@@ -53,11 +58,6 @@ class SDMBogotaService:
     ENTRY_ANONYMOUS = "entry.1252322200"
     ENTRY_TERMS_VERACITY = "entry.576560172"
     ENTRY_TERMS_DATA = "entry.1773740141"
-
-    FORM_BASE_URL = (
-        "https://docs.google.com/forms/d/e/"
-        "{form_id}/formResponse"
-    )
 
     VIEWFORM_BASE_URL = (
         "https://docs.google.com/forms/d/e/"
@@ -160,35 +160,37 @@ class SDMBogotaService:
     # ------------------------------------------------------------------
 
     async def submit_report(self, report, db) -> dict:
-        """Submit a verified report to the SDM form.
+        """Prepare an SDM submission: upload evidence to Drive and build a pre-fill URL.
 
-        Steps:
-        1. Upload evidence to Google Drive (get shareable links)
-        2. Build form data with all required fields
-        3. POST to the formResponse endpoint
-        4. On failure, store prefill URL as fallback
+        The SDM Google Form requires Google authentication for file uploads,
+        so fully automated submission is not possible. Instead this method:
+        1. Uploads evidence to Google Drive (shareable links).
+        2. Generates a pre-fill URL with all fields populated.
+        3. Returns both so the SDMSubmission record can store them for
+           manual review and one-click submission by an admin.
 
         Args:
             report: The SQLAlchemy Report model (with evidences loaded).
             db: AsyncSession for updating the SDMSubmission record.
 
         Returns:
-            dict with keys: success (bool), prefill_url (str), form_response_url (str|None),
+            dict with keys: success (bool), prefill_url (str),
             drive_links (list[str]), error (str|None).
         """
-        from app.models.sdm_submission import SDMSubmission, SDMSubmissionStatus
-
-        # Ensure evidences are loaded
         evidences = report.evidences or []
+        error: str | None = None
 
-        # Upload evidence to Google Drive
+        # Step 1 — Upload evidence to Google Drive
         drive_links: list[str] = []
         if settings.SDM_GOOGLE_SERVICE_ACCOUNT_JSON and settings.SDM_GOOGLE_DRIVE_FOLDER_ID:
-            for evidence in evidences[:5]:  # Max 5 files
+            for evidence in evidences[:5]:  # SDM form allows max 5 files
                 try:
                     link = await self.upload_evidence_to_drive(
                         evidence_url=evidence.url,
-                        filename=f"report_{report.short_id}_{evidence.id}.{evidence.mime_type.split('/')[-1]}",
+                        filename=(
+                            f"report_{report.short_id}_{evidence.id}"
+                            f".{evidence.mime_type.split('/')[-1]}"
+                        ),
                     )
                     if link:
                         drive_links.append(link)
@@ -199,60 +201,27 @@ class SDMBogotaService:
                         exc_info=True,
                     )
 
-        # Build the form data
-        form_data = self.build_form_data(report, drive_links)
+            if not drive_links and evidences:
+                error = "All Drive uploads failed — evidence links unavailable"
+                logger.error(
+                    "No evidence uploaded to Drive for report %s", report.short_id
+                )
+        elif evidences:
+            error = "Google Drive credentials not configured; evidence not uploaded"
+            logger.warning(error)
 
-        # Always generate a prefill URL as fallback
+        # Step 2 — Build pre-fill URL (primary submission method)
         prefill_url = self.build_prefill_url(report, drive_links)
 
-        # Attempt automated POST submission
-        form_response_url: str | None = None
-        error: str | None = None
-        success = False
-
-        form_url = self.FORM_BASE_URL.format(form_id=settings.SDM_FORM_ID)
-        try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                resp = await client.post(
-                    form_url,
-                    data=form_data,
-                    headers={
-                        "Content-Type": "application/x-www-form-urlencoded",
-                        "User-Agent": "Multando/1.0",
-                    },
-                    follow_redirects=True,
-                )
-
-                # Google Forms returns 200 on success (shows confirmation page)
-                if resp.status_code == 200 and "freebirdFormviewerViewResponseConfirmationMessage" in resp.text:
-                    success = True
-                    form_response_url = str(resp.url)
-                    logger.info(
-                        "SDM form submitted for report %s", report.short_id
-                    )
-                else:
-                    error = (
-                        f"Form POST returned status {resp.status_code}; "
-                        f"confirmation element not found in response"
-                    )
-                    logger.warning(
-                        "SDM form submission returned unexpected response for report %s: %s",
-                        report.short_id,
-                        error,
-                    )
-        except Exception as exc:
-            error = f"HTTP error: {exc}"
-            logger.warning(
-                "SDM form POST failed for report %s: %s",
-                report.short_id,
-                exc,
-                exc_info=True,
-            )
+        logger.info(
+            "SDM pre-fill URL generated for report %s (%d drive links)",
+            report.short_id,
+            len(drive_links),
+        )
 
         return {
-            "success": success,
+            "success": True,
             "prefill_url": prefill_url,
-            "form_response_url": form_response_url,
             "drive_links": drive_links,
             "error": error,
         }
@@ -379,7 +348,7 @@ class SDMBogotaService:
         if evidence_links:
             description_parts.append("Evidencia: " + " | ".join(evidence_links))
 
-        description = ". ".join(description_parts)[:250]
+        description = ". ".join(description_parts)[:200]
 
         data: dict[str, str] = {
             # Section 1 — Infraction details
@@ -408,11 +377,12 @@ class SDMBogotaService:
     def build_prefill_url(
         self, report, evidence_links: Optional[list[str]] = None
     ) -> str:
-        """Generate a pre-filled Google Form URL as a fallback.
+        """Generate a pre-filled Google Form URL for manual submission.
 
-        The user or admin can click this link to review and submit manually.
-        Useful when automated submission fails or for the file-upload field
-        that cannot be filled programmatically.
+        An admin clicks this link, reviews the pre-populated fields,
+        attaches the evidence file(s) from the Drive link in the description,
+        and submits. This is the primary submission method since the SDM
+        form requires Google authentication for file uploads.
 
         Args:
             report: The SQLAlchemy Report model.
@@ -426,7 +396,7 @@ class SDMBogotaService:
         base_url = self.VIEWFORM_BASE_URL.format(form_id=settings.SDM_FORM_ID)
         query_string = urlencode(form_data, quote_via=quote)
 
-        return f"{base_url}?{query_string}"
+        return f"{base_url}?usp=pp_url&{query_string}"
 
     def resolve_localidad(self, lat: float, lon: float) -> str:
         """Resolve GPS coordinates to a Bogota localidad name.
