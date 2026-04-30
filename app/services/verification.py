@@ -160,6 +160,20 @@ class VerificationService:
                     exc_info=True,
                 )
 
+        # Dispatch SDM Bogota submission when community verified threshold
+        # is reached (only for Bogota reports).
+        if record_dispatched and settings.SDM_FORM_ENABLED:
+            try:
+                from app.integrations.sdm_task import submit_to_sdm
+
+                submit_to_sdm.delay(str(report.id))
+            except Exception:
+                logger.warning(
+                    "Failed to dispatch SDM submission for report %s",
+                    report.id,
+                    exc_info=True,
+                )
+
         # Award points to verifier
         await self._award_points(
             user_id=verifier_id,

@@ -64,6 +64,9 @@ from app.models.partner import OfferRedemption, Partner, PartnerOffer
 # RECORD submission tracking
 from app.models.record_submission import RecordSubmission, RecordSubmissionStatus
 
+# SDM Bogota submission tracking
+from app.models.sdm_submission import SDMSubmission, SDMSubmissionStatus
+
 # Federation models
 from app.models.federation import FederatedReport, FederationInstance
 
@@ -133,6 +136,9 @@ __all__ = [
     # RECORD submission tracking
     "RecordSubmission",
     "RecordSubmissionStatus",
+    # SDM Bogota submission tracking
+    "SDMSubmission",
+    "SDMSubmissionStatus",
     # Federation models
     "FederatedReport",
     "FederationInstance",

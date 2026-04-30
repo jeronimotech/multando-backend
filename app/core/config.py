@@ -94,6 +94,12 @@ class Settings(BaseSettings):
     TWOCAPTCHA_API_KEY: str = ""
     RECORD_ENABLED: bool = False  # Enable RECORD auto-submission
 
+    # Bogota SDM (Secretaría Distrital de Movilidad) Google Form
+    SDM_FORM_ENABLED: bool = False
+    SDM_FORM_ID: str = "1FAIpQLSeCG84Le6cCxegrj7ns_oA36t1GJe4sHKdblOYum_vuTOXYFQ"
+    SDM_GOOGLE_SERVICE_ACCOUNT_JSON: str = ""  # Path or JSON string for service account
+    SDM_GOOGLE_DRIVE_FOLDER_ID: str = ""  # Shared folder for evidence uploads
+
     # Withdrawal Limits
     WITHDRAWAL_DAILY_LIMIT: float = 100.0
     WITHDRAWAL_MONTHLY_LIMIT: float = 1000.0
