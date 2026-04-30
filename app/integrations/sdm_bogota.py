@@ -37,23 +37,22 @@ class SDMBogotaService:
     # name="entry.XXXXXXXX" attributes. Use the actual form URL:
     #   https://docs.google.com/forms/d/e/{form_id}/viewform
     # and search the page source for "entry." fields.
-    #
-    # TODO: Replace placeholders with real entry IDs after inspecting the form.
+    # Google Form entry IDs — extracted from the SDM form HTML source
     # -----------------------------------------------------------------------
-    ENTRY_INFRACTION_TYPE = "entry.PLACEHOLDER_INFRACTION_TYPE"
-    ENTRY_ADDRESS = "entry.PLACEHOLDER_ADDRESS"
-    ENTRY_LOCALIDAD = "entry.PLACEHOLDER_LOCALIDAD"
-    ENTRY_PLATE = "entry.PLACEHOLDER_PLATE"
-    ENTRY_INTERNAL_NUMBER = "entry.PLACEHOLDER_INTERNAL_NUMBER"
-    ENTRY_EVENT_DATE_YEAR = "entry.PLACEHOLDER_EVENT_DATE_year"
-    ENTRY_EVENT_DATE_MONTH = "entry.PLACEHOLDER_EVENT_DATE_month"
-    ENTRY_EVENT_DATE_DAY = "entry.PLACEHOLDER_EVENT_DATE_day"
-    ENTRY_EVENT_TIME_HOUR = "entry.PLACEHOLDER_EVENT_TIME_hour"
-    ENTRY_EVENT_TIME_MINUTE = "entry.PLACEHOLDER_EVENT_TIME_minute"
-    ENTRY_DESCRIPTION = "entry.PLACEHOLDER_DESCRIPTION"
-    ENTRY_ANONYMOUS = "entry.PLACEHOLDER_ANONYMOUS"
-    ENTRY_TERMS_VERACITY = "entry.PLACEHOLDER_TERMS_VERACITY"
-    ENTRY_TERMS_DATA = "entry.PLACEHOLDER_TERMS_DATA"
+    ENTRY_INFRACTION_TYPE = "entry.1628113293"
+    ENTRY_ADDRESS = "entry.543300933"
+    ENTRY_LOCALIDAD = "entry.1737099860"
+    ENTRY_PLATE = "entry.846606664"
+    ENTRY_INTERNAL_NUMBER = "entry.754890082"
+    ENTRY_EVENT_DATE_YEAR = "entry.742426141_year"
+    ENTRY_EVENT_DATE_MONTH = "entry.742426141_month"
+    ENTRY_EVENT_DATE_DAY = "entry.742426141_day"
+    ENTRY_EVENT_TIME_HOUR = "entry.28021047_hour"
+    ENTRY_EVENT_TIME_MINUTE = "entry.28021047_minute"
+    ENTRY_DESCRIPTION = "entry.31467045"
+    ENTRY_ANONYMOUS = "entry.1252322200"
+    ENTRY_TERMS_VERACITY = "entry.576560172"
+    ENTRY_TERMS_DATA = "entry.1773740141"
 
     FORM_BASE_URL = (
         "https://docs.google.com/forms/d/e/"
