@@ -40,6 +40,8 @@ class ReportSource(str, Enum):
     WEB = "web"
     MOBILE = "mobile"
     WHATSAPP = "whatsapp"
+    SDK = "sdk"
+    TWITTER = "twitter"
 
 
 class VehicleCategory(str, Enum):

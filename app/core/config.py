@@ -100,6 +100,20 @@ class Settings(BaseSettings):
     SDM_GOOGLE_SERVICE_ACCOUNT_JSON: str = ""  # Path or JSON string for service account
     SDM_GOOGLE_DRIVE_FOLDER_ID: str = ""  # Shared folder for evidence uploads
 
+    # Apify Twitter scraping
+    APIFY_ENABLED: bool = False
+    APIFY_API_TOKEN: str = ""
+    APIFY_TWITTER_ACTOR_ID: str = "apidojo/tweet-scraper"
+    APIFY_SCRAPE_INTERVAL_HOURS: int = 24  # Once a day by default
+    APIFY_MAX_TWEETS_PER_RUN: int = 100
+    APIFY_MIN_CONFIDENCE_THRESHOLD: float = 0.5  # Below this → skip auto-create
+    APIFY_AUTO_CREATE_REPORTS: bool = True  # If False, only queue for admin review
+
+    # WhatsApp module flags (existing tokens above)
+    WHATSAPP_ENABLED: bool = False
+    WHATSAPP_CONVERSATION_TTL_SECONDS: int = 1800  # 30 min idle timeout
+    WHATSAPP_MAX_REPORTS_PER_PHONE_PER_DAY: int = 10
+
     # Withdrawal Limits
     WITHDRAWAL_DAILY_LIMIT: float = 100.0
     WITHDRAWAL_MONTHLY_LIMIT: float = 1000.0

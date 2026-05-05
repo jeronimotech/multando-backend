@@ -50,5 +50,9 @@ celery_app.conf.update(
             "task": "app.integrations.sdm_task.process_pending_sdm_submissions",
             "schedule": 300.0,  # Every 5 minutes
         },
+        "scrape-twitter-hashtags": {
+            "task": "app.integrations.apify_twitter.scrape_all_hashtags",
+            "schedule": settings.APIFY_SCRAPE_INTERVAL_HOURS * 3600,
+        },
     },
 )

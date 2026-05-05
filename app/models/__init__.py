@@ -67,6 +67,14 @@ from app.models.record_submission import RecordSubmission, RecordSubmissionStatu
 # SDM Bogota submission tracking
 from app.models.sdm_submission import SDMSubmission, SDMSubmissionStatus
 
+# Twitter scraping (Apify)
+from app.models.twitter_scrape import (
+    TwitterHashtag,
+    TwitterScrapedTweet,
+    TwitterScrapeRun,
+    TwitterTweetStatus,
+)
+
 # Federation models
 from app.models.federation import FederatedReport, FederationInstance
 
@@ -139,6 +147,11 @@ __all__ = [
     # SDM Bogota submission tracking
     "SDMSubmission",
     "SDMSubmissionStatus",
+    # Twitter scraping (Apify)
+    "TwitterHashtag",
+    "TwitterScrapedTweet",
+    "TwitterScrapeRun",
+    "TwitterTweetStatus",
     # Federation models
     "FederatedReport",
     "FederationInstance",

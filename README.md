@@ -19,6 +19,8 @@
 - **Blockchain Rewards** -- MULTA token incentives on Solana for verified reports
 - **Rate-Limit Safeguards** -- Anti-spam via Redis-backed sliding windows (per-IP and per-user)
 - **Reporter Anonymity** -- Identity protection for citizen reporters
+- **WhatsApp Reporting** -- Cloud API bot collects photo, GPS, plate, and infraction over a chat conversation and creates a `pending` report (anonymous by default). Implementation in [`app/services/whatsapp/`](./app/services/whatsapp/).
+- **Twitter (X) Hashtag Scraping** -- Apify-powered daily scraper pulls tweets matching admin-configured hashtags per jurisdiction, runs each through Claude to extract plate/infraction/location, and auto-creates `pending` reports above a confidence threshold. Reports still flow through community voting.
 
 ## Quick Start (Self-Hosting)
 
@@ -87,6 +89,30 @@ Client Request
 4. Create the MinIO bucket if needed (the default bucket name is `multando-evidence`)
 
 See [.env.example](./.env.example) for all available environment variables.
+
+#### WhatsApp Cloud API (optional)
+
+| Variable | Description |
+|----------|-------------|
+| `WHATSAPP_ENABLED` | Toggle the WhatsApp ingestion module |
+| `WHATSAPP_TOKEN` | Cloud API access token |
+| `WHATSAPP_PHONE_NUMBER_ID` | Sender phone number ID |
+| `WHATSAPP_VERIFY_TOKEN` | Webhook verify token |
+| `WHATSAPP_APP_SECRET` | Used to verify inbound webhook signatures |
+| `WHATSAPP_CONVERSATION_TTL_SECONDS` | How long to retain a conversation state |
+| `WHATSAPP_MAX_REPORTS_PER_PHONE_PER_DAY` | Per-phone daily cap |
+
+#### Twitter (X) scraping via Apify (optional)
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `APIFY_ENABLED` | Toggle the Twitter scraping module | `false` |
+| `APIFY_API_TOKEN` | Apify API token | -- |
+| `APIFY_TWITTER_ACTOR_ID` | Apify actor used to scrape tweets | -- |
+| `APIFY_SCRAPE_INTERVAL_HOURS` | How often the scraper runs | `24` |
+| `APIFY_MAX_TWEETS_PER_RUN` | Max tweets pulled per scrape | `100` |
+| `APIFY_MIN_CONFIDENCE_THRESHOLD` | Minimum Claude extraction confidence to create a report | `0.5` |
+| `APIFY_AUTO_CREATE_REPORTS` | Auto-create `pending` reports above threshold | `true` |
 
 ### Database Migrations
 

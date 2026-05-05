@@ -37,6 +37,7 @@ from app.api.v1.public_stats import (
     public_authority_router,
 )
 from app.api.v1.sdm import router as sdm_router
+from app.api.v1.twitter import router as twitter_router
 
 router = APIRouter()
 
@@ -82,3 +83,4 @@ router.include_router(federation_router)
 router.include_router(public_stats_router)
 router.include_router(public_authority_router)
 router.include_router(sdm_router)
+router.include_router(twitter_router)
