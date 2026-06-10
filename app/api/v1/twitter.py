@@ -134,14 +134,13 @@ async def update_hashtag(
 
 @router.delete(
     "/hashtags/{hashtag_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete a hashtag entry",
 )
 async def delete_hashtag(
     hashtag_id: UUID,
     current_user: AdminUser,
     db: DbSession,
-) -> None:
+) -> dict:
     row = await db.get(TwitterHashtag, hashtag_id)
     if row is None:
         raise HTTPException(
@@ -150,6 +149,7 @@ async def delete_hashtag(
         )
     await db.delete(row)
     await db.commit()
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------------------
