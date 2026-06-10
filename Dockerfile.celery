@@ -8,11 +8,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml README.md ./
+COPY pyproject.toml README.md requirements.txt ./
 COPY app ./app
 
+# Pinned deps from poetry.lock (deterministic), then the app without re-resolving
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir .
+    pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir --no-deps .
 
 # Production stage with Playwright browsers
 FROM python:3.11-slim

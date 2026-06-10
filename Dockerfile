@@ -10,12 +10,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy dependency files
-COPY pyproject.toml README.md ./
+COPY pyproject.toml README.md requirements.txt ./
 COPY app ./app
 
-# Install dependencies
+# Install pinned deps from the locked requirements (deterministic), then the
+# app package itself without re-resolving. requirements.txt is generated from
+# poetry.lock — regenerate with:
+#   poetry lock && poetry export --only main --without-hashes -o requirements.txt
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir .
+    pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir --no-deps .
 
 # Production stage
 FROM python:3.11-slim
